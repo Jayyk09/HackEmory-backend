@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from uuid import uuid4
 import mimetypes
-from typing import Dict, Any
+from typing import BinaryIO
 
 import boto3
 import psycopg2
@@ -27,18 +27,16 @@ def get_db_conn():
     return psycopg2.connect(DATABASE_URL)
 
 
-def upload_video_to_s3(local_path: str, user_id: int) -> str:
+def upload_video_to_s3(file_obj: BinaryIO, original_filename: str, user_id: int) -> str:
     """
-    Upload a local file to S3 under {user_id}/{uuid}{ext}
+    Upload a file-like object to S3 under {user_id}/{uuid}{ext}
     and return the S3 key to store in your DB.
     """
-    path = Path(local_path).expanduser()
-
-    # Get extension (.mp4, .mov, .pdf, etc.). Default to .mp4 if none.
-    ext = path.suffix or ".mp4"
+    # Get extension from original filename (.mp4, .mov, .jpg, etc.)
+    ext = Path(original_filename).suffix or ".mp4"
 
     # Guess MIME type, fallback to binary
-    content_type, _ = mimetypes.guess_type(str(path))
+    content_type, _ = mimetypes.guess_type(original_filename)
     if content_type is None:
         content_type = "application/octet-stream"
 
@@ -48,9 +46,12 @@ def upload_video_to_s3(local_path: str, user_id: int) -> str:
     # This is the S3 key (like a path inside the bucket)
     key = f"{user_id}/{video_id}{ext}"
 
-    # Upload the file
-    s3.upload_file(
-        Filename=str(path),
+    # Make sure we're at the start of the file
+    file_obj.seek(0)
+
+    # Upload the file object
+    s3.upload_fileobj(
+        Fileobj=file_obj,
         Bucket=BUCKET_NAME,
         Key=key,
         ExtraArgs={"ContentType": content_type},
@@ -61,17 +62,18 @@ def upload_video_to_s3(local_path: str, user_id: int) -> str:
 
 def add_video(
     user_id: int,
-    local_path: str,
+    file_obj: BinaryIO,
+    original_filename: str,
     title: str | None = None,
     description: str | None = None,
 ) -> int:
     """
     High-level function:
-    - uploads file to S3
+    - uploads file object to S3
     - inserts row into videos table
     Returns the new video id.
     """
-    s3_key = upload_video_to_s3(local_path, user_id)
+    s3_key = upload_video_to_s3(file_obj, original_filename, user_id)
 
     conn = get_db_conn()
     conn.autocommit = True
@@ -133,17 +135,22 @@ def get_video_url(user_id: int, video_id: int) -> str:
 
 
 def main():
-    # Example: assume you already know the user_id from auth
+    # Demo only: open a local file as a file object
     user_id = 1  # replace with real user id in your app
-    local_file = "~/Downloads/139-1398964_regions-bank-logo-png.jpg"
+    local_path = "~/Downloads/139-1398964_regions-bank-logo-png.jpg"
+    local_path = Path(local_path).expanduser()
+    original_filename = local_path.name
 
-    # 1) Add video (upload + DB insert)
-    video_id = add_video(
-        user_id=user_id,
-        local_path=local_file,
-        title="Test upload",
-        description="Test video for user 1",
-    )
+    with open(local_path, "rb") as f:
+        # 1) Add video (upload + DB insert)
+        video_id = add_video(
+            user_id=user_id,
+            file_obj=f,
+            original_filename=original_filename,
+            title="Test upload",
+            description="Test video for user 1",
+        )
+
     print("New video id:", video_id)
 
     # 2) Get ONLY the presigned URL using user_id + video_id
