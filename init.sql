@@ -1,3 +1,4 @@
+-- Create tables
 CREATE TABLE IF NOT EXISTS users (
     id          SERIAL PRIMARY KEY,
     email       TEXT NOT NULL UNIQUE,
@@ -13,3 +14,10 @@ CREATE TABLE IF NOT EXISTS videos (
     video_description TEXT,
     created_at        TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Seed dev users (passwords NOT hashed, dev only)
+INSERT INTO users (email, password)
+VALUES
+    ('alice@example.com', 'password1'),
+    ('bob@example.com',   'password2')
+ON CONFLICT (email) DO NOTHING;

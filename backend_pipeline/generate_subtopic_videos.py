@@ -5,7 +5,7 @@ Generate one video per subtopic transcript chunk.
 Usage:
     python backend_pipeline/generate_subtopic_videos.py \
         --transcripts assets/subtopics.json \
-        --background assets/audio/videos/minecraft.mp4 \
+        --background assets/videos/minecraft.mp4 \
         --output-dir assets/output/subtopics
 """
 
@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any, Dict, List
+from save_to_db.save_video import add_video
 
 from backend_pipeline.audio_generation.elevenLabs import (
     generate_audio_from_transcript,
@@ -46,6 +47,7 @@ def generate_videos_from_subtopic_list(
     background_video: Path | str,
     output_dir: Path | str,
     audio_dir: Path | str,
+    user_id: int,
 ) -> List[Dict[str, str]]:
     background_video = Path(background_video)
     output_dir = Path(output_dir)
@@ -89,14 +91,24 @@ def generate_videos_from_subtopic_list(
             output_file=str(video_output),
         )
 
+        with video_output.open("rb") as f:
+            video_id = add_video(
+                user_id=user_id,
+                file_obj=f,
+                original_filename=video_output.name,
+                title=subtopic["subtopic_title"],
+                description=f"Subtopic {index}/{len(subtopics)}",
+            )
+
         results.append(
             {
                 "subtopic_title": subtopic["subtopic_title"],
                 "video_path": video_path,
                 "audio_file": audio_result["audio_file"],
+                "video_id": video_id,
             }
         )
-        print(f"✅ Created {video_path}")
+        print(f"✅ Created and uploaded video_id {video_id}")
 
     return results
 
@@ -106,6 +118,7 @@ def generate_videos_for_subtopics(
     background_video: Path,
     output_dir: Path,
     audio_dir: Path,
+    user_id: int,
 ) -> List[Dict[str, str]]:
     subtopics = load_subtopics(transcripts_path)
     return generate_videos_from_subtopic_list(
@@ -113,6 +126,7 @@ def generate_videos_for_subtopics(
         background_video=background_video,
         output_dir=output_dir,
         audio_dir=audio_dir,
+        user_id=user_id,
     )
 
 
@@ -128,7 +142,7 @@ def parse_args() -> argparse.Namespace:
         "--background",
         type=Path,
         required=True,
-        help="Background video path (e.g., assets/audio/videos/minecraft.mp4).",
+        help="Background video path (e.g., assets/videos/minecraft.mp4).",
     )
     parser.add_argument(
         "--output-dir",
@@ -153,11 +167,13 @@ def main():
     if not args.background.exists():
         raise FileNotFoundError(f"Background video not found: {args.background}")
 
+    user_id = 1
     results = generate_videos_for_subtopics(
         transcripts_path=args.transcripts,
         background_video=args.background,
         output_dir=args.output_dir,
         audio_dir=args.audio_dir,
+        user_id=user_id,
     )
 
     print("\n=== Summary ===")

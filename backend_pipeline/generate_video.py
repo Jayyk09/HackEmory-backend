@@ -9,6 +9,8 @@ Complete video generation pipeline:
 import json
 import os
 import sys
+from pathlib import Path
+from uuid import uuid4
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -19,6 +21,9 @@ from backend_pipeline.audio_generation.elevenLabs import (
 )
 from backend_pipeline.video_assembly.ffMpeg import (
     create_video_with_audio_and_captions
+)
+from backend_pipeline.generate_subtopic_videos import (
+    generate_videos_from_subtopic_list,
 )
 
 def generate_complete_video(
@@ -106,11 +111,46 @@ def generate_complete_video(
     
     return final_video
 
+
+def generate_multi_videos(
+    subtopics,
+    background_video_path,
+    output_base_dir="assets/output/subtopics",
+    audio_base_dir="assets/audio/subtopics"
+):
+    print("=" * 60)
+    print("🎬 MULTI VIDEO GENERATION PIPELINE")
+    print("=" * 60)
+
+    session_id = uuid4().hex
+    video_dir = Path(output_base_dir) / f"batch_{session_id}"
+    audio_dir = Path(audio_base_dir) / f"batch_{session_id}"
+
+    video_dir.mkdir(parents=True, exist_ok=True)
+    audio_dir.mkdir(parents=True, exist_ok=True)
+
+    results = generate_videos_from_subtopic_list(
+        subtopics=subtopics,
+        background_video=background_video_path,
+        output_dir=str(video_dir),
+        audio_dir=str(audio_dir),
+    )
+
+    print("\n" + "=" * 60)
+    print("✨ MULTI VIDEO GENERATION COMPLETE!")
+    print("=" * 60)
+    print(f"📂 Video directory: {video_dir}")
+    for item in results:
+        print(f"- {item['subtopic_title']}: {item['video_path']}")
+    print("=" * 60)
+
+    return results
+
 if __name__ == "__main__":
     # Default paths
-    TRANSCRIPT_JSON = "assets/sample.json"
-    BACKGROUND_VIDEO = "assets/audio/videos/minecraft.mp4"
-    OUTPUT_VIDEO = "assets/output/final_video.mp4"
+    TRANSCRIPT_JSON = os.environ.get("TRANSCRIPT_JSON", "assets/sample.json")
+    BACKGROUND_VIDEO = os.environ.get("BACKGROUND_VIDEO", "assets/videos/minecraft.mp4")
+    OUTPUT_VIDEO = os.environ.get("OUTPUT_VIDEO", "assets/output/final_video.mp4")
     
     # Check if files exist
     if not os.path.exists(TRANSCRIPT_JSON):
@@ -121,14 +161,23 @@ if __name__ == "__main__":
         print(f"❌ Error: Background video not found: {BACKGROUND_VIDEO}")
         sys.exit(1)
     
-    # Generate video
+    with open(TRANSCRIPT_JSON, "r") as f:
+        transcript_json = json.load(f)
+    
     try:
-        final_video = generate_complete_video(
-            transcript_json_path=TRANSCRIPT_JSON,
-            background_video_path=BACKGROUND_VIDEO,
-            output_video_path=OUTPUT_VIDEO
-        )
-        print(f"\n🎉 Success! Watch your video at: {final_video}")
+        if "subtopic_transcripts" in transcript_json:
+            results = generate_multi_videos(
+                subtopics=transcript_json["subtopic_transcripts"],
+                background_video_path=BACKGROUND_VIDEO,
+            )
+            print(f"\n🎉 Success! Generated {len(results)} videos.")
+        else:
+            final_video = generate_complete_video(
+                transcript_json_path=TRANSCRIPT_JSON,
+                background_video_path=BACKGROUND_VIDEO,
+                output_video_path=OUTPUT_VIDEO
+            )
+            print(f"\n🎉 Success! Watch your video at: {final_video}")
     except Exception as e:
         print(f"\n❌ Error during video generation: {e}")
         import traceback
