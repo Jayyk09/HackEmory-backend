@@ -1,0 +1,5 @@
+elevenlabs
+google-genai
+python-dotenv
+fastapi
+uvicorn
