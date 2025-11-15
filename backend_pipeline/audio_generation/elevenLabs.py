@@ -12,8 +12,8 @@ client = ElevenLabs(
 
 # Voice mapping for different speakers
 VOICE_MAP = {
-    "PETER": "zE6Bt8QH1noub5xkOEVo",  # Male voice
-    "STEWIE": "pNInz6obpgDQGcFmaJgB",  # Child/younger voice
+    "PETER": os.getenv("Peter_voiceId"),  # Male voice
+    "STEWIE": os.getenv("Stewie_voiceId"),  # Child/younger voice
 }
 
 def generate_audio_from_transcript(transcript_data, output_dir="assets/audio/segments"):
