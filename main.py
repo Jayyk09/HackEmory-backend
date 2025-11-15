@@ -5,12 +5,8 @@ from uuid import uuid4
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 
 from frontend_pipeline.script_generation.transcripts import extract_transcripts
-from backend_pipeline.audio_generation.elevenLabs import (
-    generate_audio_from_transcript,
-    concatenate_audio_segments,
-)
-from backend_pipeline.video_assembly.ffMpeg import (
-    create_video_with_audio_and_captions,
+from backend_pipeline.generate_subtopic_videos import (
+    generate_videos_from_subtopic_list,
 )
 
 BACKGROUND_VIDEO = Path("assets/audio/videos/minecraft.mp4")
@@ -27,11 +23,6 @@ app = FastAPI(
     description="API for generating videos from slides",
     version="1.0.0"
 )
-
-def _slugify(value: str) -> str:
-    safe = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in value.strip())
-    return safe[:40] or "subtopic"
-
 
 @app.get("/")
 async def root():
@@ -117,42 +108,27 @@ async def generate_video(
 
         subtopics = await _run_blocking(extract_transcripts, transcript_source, transcript_type)
         if not subtopics:
-            raise HTTPException(status_code=502, detail="No subtopics returned from model output.")
+            detail = {
+                "error": "model_returned_no_subtopics",
+                "input_type": input_type,
+                "content_preview": (transcript_source or "")[:280],
+            }
+            raise HTTPException(status_code=502, detail=detail)
 
         _validate_background_video()
 
-        video_results = []
+        session_id = uuid4().hex
+        video_output_dir = OUTPUT_DIR / session_id
+        audio_output_dir = GENERATED_AUDIO_DIR / session_id
+        payload = [subtopic.model_dump() for subtopic in subtopics]
 
-        for subtopic in subtopics:
-            dialogue_payload = {
-                "transcripts": [line.model_dump() for line in subtopic.dialogue]
-            }
-            audio_segments = await _run_blocking(generate_audio_from_transcript, dialogue_payload)
-
-            safe_title = _slugify(subtopic.subtopic_title)
-            audio_output_path = GENERATED_AUDIO_DIR / f"{safe_title}_{uuid4().hex}.mp3"
-            audio_result = await _run_blocking(
-                concatenate_audio_segments,
-                audio_segments,
-                str(audio_output_path),
-            )
-
-            video_output_path = OUTPUT_DIR / f"{safe_title}_{uuid4().hex}.mp4"
-            video_path = await _run_blocking(
-                create_video_with_audio_and_captions,
-                str(BACKGROUND_VIDEO),
-                audio_result["audio_file"],
-                audio_result["timings"],
-                str(video_output_path),
-            )
-
-            video_results.append({
-                "subtopic_title": subtopic.subtopic_title,
-                "video_path": video_path,
-                "audio_file": audio_result["audio_file"],
-                "duration_seconds": audio_result["total_duration"],
-                "segments": len(audio_result["timings"]),
-            })
+        video_results = await _run_blocking(
+            generate_videos_from_subtopic_list,
+            payload,
+            str(BACKGROUND_VIDEO),
+            str(video_output_dir),
+            str(audio_output_dir),
+        )
 
         return {
             "count": len(video_results),

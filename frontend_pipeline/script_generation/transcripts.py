@@ -4,8 +4,8 @@ import json
 from typing import Any, List
 
 import dotenv
-from google import genai
-from google.genai import types
+import google.genai as genai
+import google.genai.types as types
 from pydantic import ValidationError
 
 try:
