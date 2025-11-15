@@ -1,16 +1,25 @@
 import subprocess
 import os
 import json
+import textwrap
+
+def wrap_caption_text(text, max_chars=32):
+    """Wrap caption text to a maximum characters per line (word-aware)."""
+    wrapped_lines = textwrap.wrap(text, width=max_chars)
+    return "\n".join(wrapped_lines) if wrapped_lines else text
+
 
 def create_video_with_audio_and_captions(
     background_video,
     audio_file,
     caption_timings,
     output_file="assets/output/final_video.mp4",
-    video_size=(1080, 1920)  # Portrait 9:16 for TikTok/Reels
+    video_size=(1080, 1920),  # Portrait 9:16 for TikTok/Reels
+    peter_image="assets/characters/peter.png",
+    stewie_image="assets/characters/stewie.png"
 ):
     """
-    Create a video with looping background, audio, and caption overlays.
+    Create a video with looping background, audio, caption overlays, and character images.
     
     Args:
         background_video: Path to background video (minecraft.mp4)
@@ -18,6 +27,8 @@ def create_video_with_audio_and_captions(
         caption_timings: List of timing dictionaries with start, end, caption, speaker
         output_file: Output video file path
         video_size: Tuple of (width, height) for output video
+        peter_image: Path to Peter character image
+        stewie_image: Path to Stewie character image
     
     Returns:
         Path to output video
@@ -27,6 +38,15 @@ def create_video_with_audio_and_captions(
     # Check if audio file exists
     if not os.path.exists(audio_file):
         raise FileNotFoundError(f"Audio file not found: {audio_file}")
+    
+    # Check if character images exist
+    if not os.path.exists(peter_image):
+        print(f"⚠️  Warning: Peter image not found: {peter_image}")
+        peter_image = None
+    
+    if not os.path.exists(stewie_image):
+        print(f"⚠️  Warning: Stewie image not found: {stewie_image}")
+        stewie_image = None
     
     # Get audio duration
     duration_cmd = [
@@ -51,11 +71,32 @@ def create_video_with_audio_and_captions(
     
     print(f"🎬 Creating video with duration: {audio_duration:.2f}s")
     
+    # Group timings by speaker for character overlay enable expressions
+    peter_timings = [t for t in caption_timings if t["speaker"] == "PETER"]
+    stewie_timings = [t for t in caption_timings if t["speaker"] == "STEWIE"]
+    
+    # Create enable expressions for each character
+    def create_enable_expr(timings):
+        if not timings:
+            return "0"  # Never show
+        conditions = [f"between(t,{t['start']},{t['end']})" for t in timings]
+        return "+".join(conditions)
+    
+    peter_enable = create_enable_expr(peter_timings)
+    stewie_enable = create_enable_expr(stewie_timings)
+    
     # Build ffmpeg filter for captions
     caption_filters = []
     for timing in caption_timings:
-        # Escape special characters in caption text
-        caption_text = timing["caption"].replace("'", "'\\\\\\''").replace(":", "\\:")
+        # Wrap and escape caption text
+        wrapped_text = wrap_caption_text(timing["caption"])
+        caption_text = (
+            wrapped_text
+            .replace("\\", "\\\\")
+            .replace("'", "'\\\\\\''")
+            .replace(":", "\\:")
+            .replace("\n", "\\n")
+        )
         speaker = timing["speaker"]
         
         # Style for captions
@@ -66,22 +107,66 @@ def create_video_with_audio_and_captions(
             color = "yellow"
             bg_color = "0x0000FF80"  # Semi-transparent blue
         
-        # Create drawtext filter for this caption
+        # Create drawtext filter for this caption with manual wrapping
         caption_filter = (
             f"drawtext=text='{caption_text}':"
             f"fontfile=/System/Library/Fonts/Supplemental/Arial Bold.ttf:"
-            f"fontsize=48:"
+            f"fontsize=54:"
             f"fontcolor={color}:"
             f"box=1:boxcolor={bg_color}:boxborderw=10:"
-            f"x=(w-text_w)/2:"
-            f"y=h-200:"
+            f"x=(w-tw)/2:"  # Center horizontally
+            f"y=h-320:"  # Position near bottom
             f"enable='between(t,{timing['start']},{timing['end']})':"
-            f"line_spacing=10"
+            f"line_spacing=18"
         )
         caption_filters.append(caption_filter)
     
     # Combine all caption filters
     all_captions = ",".join(caption_filters) if caption_filters else ""
+    
+    # Build filter_complex chain
+    # Start with background video scaling
+    filter_parts = [
+        f"[0:v]scale={video_size[0]}:{video_size[1]}:force_original_aspect_ratio=decrease,"
+        f"pad={video_size[0]}:{video_size[1]}:(ow-iw)/2:(oh-ih)/2[bg]"
+    ]
+    
+    current_stream = "[bg]"
+    input_index = 2  # 0=background, 1=audio, 2+=character images
+    
+    # Add character overlays if images exist
+    character_height = 320
+    margin = 40
+    
+    if stewie_image:
+        # Scale and overlay Stewie on bottom left
+        filter_parts.append(
+            f"[{input_index}:v]scale=-1:{character_height}[stewie]"
+        )
+        filter_parts.append(
+            f"{current_stream}[stewie]overlay={margin}:H-h-{margin}:enable='{stewie_enable}'[tmp{input_index}]"
+        )
+        current_stream = f"[tmp{input_index}]"
+        input_index += 1
+    
+    if peter_image:
+        # Scale and overlay Peter on bottom right
+        filter_parts.append(
+            f"[{input_index}:v]scale=-1:{character_height}[peter]"
+        )
+        filter_parts.append(
+            f"{current_stream}[peter]overlay=W-w-{margin}:H-h-{margin}:enable='{peter_enable}'[tmp{input_index}]"
+        )
+        current_stream = f"[tmp{input_index}]"
+        input_index += 1
+    
+    # Add captions on top
+    if all_captions:
+        filter_parts.append(f"{current_stream}{all_captions}[v]")
+    else:
+        filter_parts.append(f"{current_stream}split[v]")
+    
+    filter_complex = ";".join(filter_parts)
     
     # Build ffmpeg command
     cmd = [
@@ -91,11 +176,18 @@ def create_video_with_audio_and_captions(
         "-i", background_video,
         # Input: Audio
         "-i", audio_file,
-        # Video filters: scale, loop, and add captions
-        "-filter_complex",
-        f"[0:v]scale={video_size[0]}:{video_size[1]}:force_original_aspect_ratio=decrease,"
-        f"pad={video_size[0]}:{video_size[1]}:(ow-iw)/2:(oh-ih)/2,"
-        f"{all_captions}[v]",
+    ]
+    
+    # Add character image inputs
+    if stewie_image:
+        cmd.extend(["-loop", "1", "-i", stewie_image])
+    if peter_image:
+        cmd.extend(["-loop", "1", "-i", peter_image])
+    
+    # Add filter complex and output settings
+    cmd.extend([
+        # Video filters: scale, overlays, and captions
+        "-filter_complex", filter_complex,
         # Map outputs
         "-map", "[v]",
         "-map", "1:a",
@@ -111,7 +203,7 @@ def create_video_with_audio_and_captions(
         # Metadata
         "-movflags", "+faststart",
         output_file
-    ]
+    ])
     
     print(f"🎥 Rendering video with {len(caption_timings)} caption overlays...")
     print(f"   Background: {background_video}")
