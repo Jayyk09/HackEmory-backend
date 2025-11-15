@@ -1,8 +1,10 @@
 import asyncio
 from pathlib import Path
+from typing import List
 from uuid import uuid4
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from pydantic import BaseModel
 
 from frontend_pipeline.script_generation.transcripts import extract_transcripts
 from backend_pipeline.generate_subtopic_videos import (
@@ -17,6 +19,21 @@ GENERATED_AUDIO_DIR = Path("assets/audio/generated")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 TEMP_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 GENERATED_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+
+
+class DialogueLine(BaseModel):
+    caption: str
+    speaker: str
+
+
+class SubtopicPayload(BaseModel):
+    subtopic_title: str
+    dialogue: List[DialogueLine]
+
+
+class SubtopicRequest(BaseModel):
+    subtopic_transcripts: List[SubtopicPayload]
+
 
 app = FastAPI(
     title="Video Generation API",
@@ -137,4 +154,29 @@ async def generate_video(
     finally:
         if temp_audio_path and temp_audio_path.exists():
             temp_audio_path.unlink()
+
+
+@app.post("/generate-video/direct")
+async def generate_video_from_subtopics(payload: SubtopicRequest):
+    _validate_background_video()
+
+    if not payload.subtopic_transcripts:
+        raise HTTPException(status_code=400, detail="subtopic_transcripts cannot be empty.")
+
+    session_id = uuid4().hex
+    video_output_dir = OUTPUT_DIR / f"direct_{session_id}"
+    audio_output_dir = GENERATED_AUDIO_DIR / f"direct_{session_id}"
+
+    video_results = await _run_blocking(
+        generate_videos_from_subtopic_list,
+        [subtopic.model_dump() for subtopic in payload.subtopic_transcripts],
+        str(BACKGROUND_VIDEO),
+        str(video_output_dir),
+        str(audio_output_dir),
+    )
+
+    return {
+        "count": len(video_results),
+        "results": video_results,
+    }
 
