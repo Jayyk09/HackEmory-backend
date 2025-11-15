@@ -282,7 +282,6 @@ Output the result in a SINGLE JSON object structured exactly like the example be
 THE JSON STRUCTURE:
 
 JSON
-
 {
   "quiz_modules": [
     {
