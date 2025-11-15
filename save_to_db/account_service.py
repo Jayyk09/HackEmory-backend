@@ -1,24 +1,15 @@
 """Simple account service using psycopg2 for CRUD operations."""
 
-import os
-import psycopg2
 from typing import Optional, Dict, List
-from dotenv import load_dotenv
 
-load_dotenv()
-
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-
-def get_db_conn():
-    """Get database connection."""
-    return psycopg2.connect(DATABASE_URL)
+import psycopg2
+from main import get_db_conn  # <-- use shared DB helper
 
 
 def create_user(email: str, password: str) -> Optional[Dict]:
     """
     Create a new user account.
-    
+
     Returns:
         User dict with id, email if successful, None if email exists
     """
@@ -26,8 +17,12 @@ def create_user(email: str, password: str) -> Optional[Dict]:
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO users (email, password) VALUES (%s, %s) RETURNING id, email, created_at",
-                (email, password)
+                """
+                INSERT INTO users (email, password)
+                VALUES (%s, %s)
+                RETURNING id, email, created_at
+                """,
+                (email, password),
             )
             row = cur.fetchone()
             conn.commit()
@@ -46,7 +41,7 @@ def get_user_by_id(user_id: int) -> Optional[Dict]:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT id, email, created_at FROM users WHERE id = %s",
-                (user_id,)
+                (user_id,),
             )
             row = cur.fetchone()
             if row:
@@ -63,7 +58,7 @@ def get_user_by_email(email: str) -> Optional[Dict]:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT id, email, created_at FROM users WHERE email = %s",
-                (email,)
+                (email,),
             )
             row = cur.fetchone()
             if row:
@@ -76,7 +71,7 @@ def get_user_by_email(email: str) -> Optional[Dict]:
 def authenticate_user(email: str, password: str) -> Optional[Dict]:
     """
     Authenticate user by email and password.
-    
+
     Returns:
         User dict if credentials valid, None otherwise
     """
@@ -84,8 +79,12 @@ def authenticate_user(email: str, password: str) -> Optional[Dict]:
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, email, created_at FROM users WHERE email = %s AND password = %s",
-                (email, password)
+                """
+                SELECT id, email, created_at
+                FROM users
+                WHERE email = %s AND password = %s
+                """,
+                (email, password),
             )
             row = cur.fetchone()
             if row:
@@ -98,7 +97,7 @@ def authenticate_user(email: str, password: str) -> Optional[Dict]:
 def update_password(user_id: int, new_password: str) -> bool:
     """
     Update user password.
-    
+
     Returns:
         True if successful, False if user not found
     """
@@ -107,7 +106,7 @@ def update_password(user_id: int, new_password: str) -> bool:
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE users SET password = %s WHERE id = %s",
-                (new_password, user_id)
+                (new_password, user_id),
             )
             conn.commit()
             return cur.rowcount > 0
@@ -118,7 +117,7 @@ def update_password(user_id: int, new_password: str) -> bool:
 def delete_user(user_id: int) -> bool:
     """
     Delete user account.
-    
+
     Returns:
         True if successful, False if user not found
     """
@@ -137,8 +136,13 @@ def list_all_users() -> List[Dict]:
     conn = get_db_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT id, email, created_at FROM users ORDER BY id")
+            cur.execute(
+                "SELECT id, email, created_at FROM users ORDER BY id"
+            )
             rows = cur.fetchall()
-            return [{"id": row[0], "email": row[1], "created_at": row[2]} for row in rows]
+            return [
+                {"id": row[0], "email": row[1], "created_at": row[2]}
+                for row in rows
+            ]
     finally:
         conn.close()

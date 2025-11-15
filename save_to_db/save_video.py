@@ -1,30 +1,16 @@
-import os
 from pathlib import Path
 from uuid import uuid4
 import mimetypes
 from typing import Dict, Any, List
 
 import boto3
-import psycopg2
-from dotenv import load_dotenv  # pip install python-dotenv
+
+from main import get_db_conn  # <-- shared DB connection
 
 BUCKET_NAME = "emory-hacks-video-bucket"
 
-# ---- Load env (.env is one level up from this file) ----
-BASE_DIR = Path(__file__).resolve().parent.parent  # HackEmory-backend/
-load_dotenv(BASE_DIR / ".env")
-
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL not set in environment/.env")
-
 # Reuse one S3 client for the whole program
 s3 = boto3.client("s3")  # uses your aws configure creds
-
-
-def get_db_conn():
-    """Create a new DB connection."""
-    return psycopg2.connect(DATABASE_URL)
 
 
 def upload_video_to_s3(local_path: str, user_id: int) -> str:
@@ -88,7 +74,6 @@ def add_video(
             row = cur.fetchone()
             if row is None:
                 raise RuntimeError("INSERT INTO videos RETURNING id returned no row")
-            # row is a 1-tuple: (id,)
             video_id = row[0]
     finally:
         conn.close()
@@ -122,17 +107,14 @@ def get_video(user_id: int, video_id: int) -> Dict[str, Any]:
     if row is None:
         raise ValueError("Video not found for given user_id and video_id")
 
-    # row is a tuple in the same order as SELECT
     vid_id, user_id_db, s3_key, title, desc, created_at = row
 
-    # Generate a presigned URL to access the object
     presigned_url = s3.generate_presigned_url(
         "get_object",
         Params={"Bucket": BUCKET_NAME, "Key": s3_key},
         ExpiresIn=3600,  # valid for 1 hour
     )
 
-    # Build a normal dict to return
     return {
         "id": vid_id,
         "user_id": user_id_db,

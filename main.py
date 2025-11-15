@@ -1,10 +1,13 @@
 import asyncio
 import re
+import os
 from pathlib import Path
 from typing import List
 from uuid import uuid4
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Query
+import psycopg2
+from dotenv import load_dotenv
 
 from save_to_db.save_video import get_user_videos
 from pydantic import BaseModel
@@ -38,6 +41,19 @@ class SubtopicPayload(BaseModel):
 class SubtopicRequest(BaseModel):
     subtopic_transcripts: List[SubtopicPayload]
 
+
+
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL not set in environment/.env")
+
+
+def get_db_conn():
+    """Return a new psycopg2 connection using DATABASE_URL."""
+    return psycopg2.connect(DATABASE_URL)
 
 app = FastAPI(
     title="Video Generation API",
