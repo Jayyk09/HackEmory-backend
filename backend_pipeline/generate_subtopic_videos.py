@@ -100,6 +100,14 @@ def generate_videos_from_subtopic_list(
                 description=f"Subtopic {index}/{len(subtopics)}",
             )
 
+        results.append(
+            {
+                "subtopic_title": subtopic["subtopic_title"],
+                "video_path": video_path,
+                "audio_file": audio_result["audio_file"],
+                "video_id": video_id,
+            }
+        )
         print(f"✅ Created and uploaded video_id {video_id}")
 
     return results

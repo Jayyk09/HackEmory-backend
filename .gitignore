@@ -1,6 +1,7 @@
 .env
 venv/
-assets/
+assets/*
+!assets/characters/
 **/__pycache__/
 **/**/__pycache__/
 *.pyc

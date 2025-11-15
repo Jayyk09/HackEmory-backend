@@ -79,7 +79,7 @@ def _move_upload_to_disk(upload: UploadFile, destination: Path):
     upload.file.close()
 
 
-async def _generate_videos(subtopics, prefix: str):
+async def _generate_videos(user_id, subtopics, prefix: str):
     session_id = uuid4().hex
     video_output_dir = OUTPUT_DIR / f"{prefix}_{session_id}"
     audio_output_dir = GENERATED_AUDIO_DIR / f"{prefix}_{session_id}"
@@ -89,9 +89,10 @@ async def _generate_videos(subtopics, prefix: str):
         str(BACKGROUND_VIDEO),
         str(video_output_dir),
         str(audio_output_dir),
+        user_id,
     )
 
-async def generate_video_from_subtopics(payload: SubtopicRequest):
+async def generate_video_from_subtopics(payload: SubtopicRequest, user_id: int = 1):
     _validate_background_video()
 
     if not payload.subtopic_transcripts:
@@ -99,6 +100,7 @@ async def generate_video_from_subtopics(payload: SubtopicRequest):
 
     session_id = uuid4().hex
     video_results = await _generate_videos(
+        user_id,
         [subtopic.model_dump() for subtopic in payload.subtopic_transcripts],
         prefix="direct",
     )
@@ -111,6 +113,7 @@ async def generate_video_from_subtopics(payload: SubtopicRequest):
 @app.post("/generate-video")
 async def generate_video(
     input_type: str = Form(..., description="audio|text|youtube"),
+    user_id: int = Form(1, description="User ID for video ownership"),
     content: str | None = Form(
         None,
         description="Text, YouTube URL, or other string content depending on input_type",
@@ -167,6 +170,7 @@ async def generate_video(
             raise HTTPException(status_code=502, detail=detail)
 
         video_results = await _generate_videos(
+            user_id,
             [subtopic.model_dump() for subtopic in subtopics],
             prefix="session",
         )
