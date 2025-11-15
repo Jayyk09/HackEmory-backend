@@ -5,6 +5,27 @@ import dotenv
 from google import genai
 from google.genai import types
 
+try:
+    from frontend_pipeline.script_generation.prompts import (
+        AUDIO_PROMPT,
+        TEXT_PROMPT,
+        YOUTUBE_PROMPT,
+        PPTX_PROMPT,
+    )
+except ImportError:  # pragma: no cover - fallback when run as script
+    from script_generation.prompts import (  # type: ignore
+        AUDIO_PROMPT,
+        TEXT_PROMPT,
+        YOUTUBE_PROMPT,
+        PPTX_PROMPT,
+    )
+
+
+def _ensure_text(data):
+    if isinstance(data, bytes):
+        return data.decode("utf-8")
+    return str(data)
+
 
 def extract_transcripts(file, file_type):
     dotenv.load_dotenv()
@@ -35,7 +56,7 @@ def extract_transcripts(file, file_type):
             types.Part.from_text(text=AUDIO_PROMPT),
         ]
     elif file_type == "text":
-        text_data = bytes.decode("utf-8")
+        text_data = _ensure_text(file)
         contents = [
             types.Content(
                 role="user",
@@ -48,7 +69,7 @@ def extract_transcripts(file, file_type):
             types.Part.from_text(text=TEXT_PROMPT),
         ]
     elif file_type == "youtube":
-        youtube_url = bytes.decode("utf-8")
+        youtube_url = _ensure_text(file)
         contents = [
             types.Content(
                 role="user",
@@ -61,7 +82,7 @@ def extract_transcripts(file, file_type):
             types.Part.from_text(text=YOUTUBE_PROMPT)
         ]
     elif file_type == "pptx":
-        pptx_data = bytes.decode("utf-8")
+        pptx_data = _ensure_text(file)
         contents = [
             types.Content(
                 role="user",
