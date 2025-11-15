@@ -13,6 +13,7 @@ from frontend_pipeline.script_generation.transcripts import extract_transcripts
 from backend_pipeline.generate_subtopic_videos import (
     generate_videos_from_subtopic_list,
 )
+import account_service
 
 BACKGROUND_VIDEO = Path("assets/videos/minecraft.mp4")
 OUTPUT_DIR = Path("assets/output")
@@ -255,3 +256,53 @@ async def list_user_videos(
         "count": len(simplified),
         "videos": simplified,
     }
+
+
+# ============ Account CRUD Endpoints ============
+
+class UserCreate(BaseModel):
+    email: str
+    password: str
+
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+
+class UserUpdatePassword(BaseModel):
+    new_password: str
+
+
+@app.post("/accounts")
+async def register_account(user: UserCreate):
+    """Create a new user account."""
+    result = await _run_blocking(account_service.create_user, user.email, user.password)
+    if result is None:
+        raise HTTPException(status_code=400, detail="Email already exists")
+    return {"message": "Account created", "user": result}
+
+
+@app.post("/accounts/login")
+async def login_account(credentials: UserLogin):
+    """Authenticate user and return user info."""
+    result = await _run_blocking(account_service.authenticate_user, credentials.email, credentials.password)
+    if result is None:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    return {"message": "Login successful", "user": result}
+
+
+@app.get("/accounts/{user_id}")
+async def get_account(user_id: int):
+    """Get user account by ID."""
+    result = await _run_blocking(account_service.get_user_by_id, user_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return result
+
+
+@app.get("/accounts")
+async def list_accounts():
+    """List all user accounts."""
+    users = await _run_blocking(account_service.list_all_users)
+    return {"count": len(users), "users": users}
