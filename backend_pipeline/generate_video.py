@@ -24,7 +24,8 @@ from backend_pipeline.video_assembly.ffMpeg import (
 def generate_complete_video(
     transcript_json_path,
     background_video_path,
-    output_video_path="assets/output/final_video.mp4"
+    output_video_path="assets/output/final_video.mp4",
+    skip_audio_generation=True
 ):
     """
     Complete pipeline to generate a video from transcript JSON.
@@ -33,6 +34,7 @@ def generate_complete_video(
         transcript_json_path: Path to JSON file with transcripts
         background_video_path: Path to background video (e.g., minecraft.mp4)
         output_video_path: Path for final output video
+        skip_audio_generation: If True, use existing audio segments if available
     
     Returns:
         Path to final video file
@@ -47,9 +49,33 @@ def generate_complete_video(
         transcript_data = json.load(f)
     print(f"   Loaded {len(transcript_data['transcripts'])} transcript segments")
     
-    # Step 2: Generate audio
-    print("\n🎙️  Step 2: Generating audio from transcripts...")
-    audio_segments = generate_audio_from_transcript(transcript_data)
+    # Step 2: Generate audio or use existing
+    segments_dir = "assets/audio/segments"
+    existing_segments = []
+    
+    if skip_audio_generation and os.path.exists(segments_dir):
+        # Check for existing audio segments
+        segment_files = sorted([f for f in os.listdir(segments_dir) if f.startswith("segment_") and f.endswith(".mp3")])
+        if segment_files:
+            print(f"\n🎙️  Step 2: Found {len(segment_files)} existing audio segments, skipping generation...")
+            for idx, segment in enumerate(transcript_data['transcripts']):
+                speaker = segment["speaker"]
+                segment_file = os.path.join(segments_dir, f"segment_{idx:03d}_{speaker.lower()}.mp3")
+                if os.path.exists(segment_file):
+                    existing_segments.append({
+                        "index": idx,
+                        "file": segment_file,
+                        "caption": segment["caption"],
+                        "speaker": segment["speaker"]
+                    })
+            audio_segments = existing_segments
+            print(f"   ✅ Using {len(audio_segments)} existing segments")
+        else:
+            print("\n🎙️  Step 2: No existing segments found, generating audio from transcripts...")
+            audio_segments = generate_audio_from_transcript(transcript_data)
+    else:
+        print("\n🎙️  Step 2: Generating audio from transcripts...")
+        audio_segments = generate_audio_from_transcript(transcript_data)
     
     # Step 3: Concatenate audio
     print("\n🔗 Step 3: Concatenating audio segments...")

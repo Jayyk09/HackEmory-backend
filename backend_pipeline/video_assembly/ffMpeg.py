@@ -24,6 +24,10 @@ def create_video_with_audio_and_captions(
     """
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
     
+    # Check if audio file exists
+    if not os.path.exists(audio_file):
+        raise FileNotFoundError(f"Audio file not found: {audio_file}")
+    
     # Get audio duration
     duration_cmd = [
         "ffprobe", "-v", "error",
@@ -32,6 +36,17 @@ def create_video_with_audio_and_captions(
         audio_file
     ]
     result = subprocess.run(duration_cmd, capture_output=True, text=True)
+    
+    if result.returncode != 0:
+        print(f"❌ ffprobe error: {result.stderr}")
+        raise Exception(f"Failed to get audio duration: {result.stderr}")
+    
+    if not result.stdout.strip():
+        print(f"❌ ffprobe returned empty output for: {audio_file}")
+        print(f"   Command: {' '.join(duration_cmd)}")
+        print(f"   stderr: {result.stderr}")
+        raise ValueError(f"Could not determine audio duration for {audio_file}")
+    
     audio_duration = float(result.stdout.strip())
     
     print(f"🎬 Creating video with duration: {audio_duration:.2f}s")
@@ -51,7 +66,7 @@ def create_video_with_audio_and_captions(
             color = "yellow"
             bg_color = "0x0000FF80"  # Semi-transparent blue
         
-        # Create drawtext filter for this caption with word wrapping
+        # Create drawtext filter for this caption
         caption_filter = (
             f"drawtext=text='{caption_text}':"
             f"fontfile=/System/Library/Fonts/Supplemental/Arial Bold.ttf:"
@@ -61,8 +76,7 @@ def create_video_with_audio_and_captions(
             f"x=(w-text_w)/2:"
             f"y=h-200:"
             f"enable='between(t,{timing['start']},{timing['end']})':"
-            f"line_spacing=10:"
-            f"text_w=min(w-40\\,text_w)"
+            f"line_spacing=10"
         )
         caption_filters.append(caption_filter)
     

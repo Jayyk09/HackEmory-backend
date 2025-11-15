@@ -79,30 +79,48 @@ def concatenate_audio_segments(audio_segments, output_file="assets/audio/full_au
     import subprocess
     
     # Create a file list for ffmpeg
-    list_file = "assets/audio/segments/filelist.txt"
+    segments_dir = os.path.dirname(audio_segments[0]["file"])
+    list_file = os.path.join(segments_dir, "filelist.txt")
+    
     with open(list_file, "w") as f:
         for segment in audio_segments:
             f.write(f"file '{os.path.basename(segment['file'])}'\n")
+    
+    # Make sure output directory exists
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    
+    # Get absolute paths for ffmpeg
+    abs_list_file = os.path.abspath(list_file)
+    abs_output_file = os.path.abspath(output_file)
     
     # Concatenate using ffmpeg
     cmd = [
         "ffmpeg", "-y",
         "-f", "concat",
         "-safe", "0",
-        "-i", list_file,
+        "-i", abs_list_file,
         "-c", "copy",
-        output_file
+        abs_output_file
     ]
     
     print(f"🔗 Concatenating {len(audio_segments)} audio segments...")
-    subprocess.run(cmd, cwd=os.path.dirname(audio_segments[0]["file"]), 
-                   capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    
+    if result.returncode != 0:
+        print(f"❌ FFmpeg concatenation failed!")
+        print(f"   Command: {' '.join(cmd)}")
+        print(f"   stderr: {result.stderr}")
+        raise Exception(f"FFmpeg concatenation failed: {result.stderr}")
     
     # Get duration of each segment using ffprobe
     timings = []
     current_time = 0.0
     
     for segment in audio_segments:
+        if not os.path.exists(segment["file"]):
+            print(f"⚠️  Warning: Segment file not found: {segment['file']}")
+            continue
+            
         duration_cmd = [
             "ffprobe", "-v", "error",
             "-show_entries", "format=duration",
@@ -110,6 +128,12 @@ def concatenate_audio_segments(audio_segments, output_file="assets/audio/full_au
             segment["file"]
         ]
         result = subprocess.run(duration_cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0 or not result.stdout.strip():
+            print(f"⚠️  Warning: Could not get duration for {segment['file']}")
+            print(f"   stderr: {result.stderr}")
+            continue
+            
         duration = float(result.stdout.strip())
         
         timings.append({
