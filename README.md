@@ -2,121 +2,66 @@
 
 A FastAPI application that generates videos from slides using OCR, Gemini AI, ElevenLabs TTS, and FFmpeg.
 
-## Architecture
+## Architecture Pipeline
 
 ```
 Input (Slides) 
     ↓
 [OCR] Extract text → Raw transcript
     ↓
-[Gemini] Generate script → [{t1, c1, s}, {t2, c2, s}, ...]
+[Gemini] Generate script → [{t, c, s}, {t, c, s}, ...]
     ↓
 [ElevenLabs] Generate audio + timing → Shot list with durations
     ↓
 [FFmpeg] Assemble video → Final video with synchronized captions
 ```
 
-### Pipeline Breakdown
-
-1. **OCR Service** (`app/services/ocr_service.py`)
-   - Extracts text from slides (PDF, images)
-   - Returns raw transcript
-
-2. **Gemini Service** (`app/services/gemini_service.py`)
-   - Takes raw transcript
-   - Returns structured script: `[{t, c, s}, ...]`
-     - `t`: Full line for speaker
-     - `c`: Short caption for screen
-     - `s`: Speaker ID
-
-3. **ElevenLabs Service** (`app/services/elevenlabs_service.py`)
-   - Loops through script lines
-   - Generates audio for each line with correct voice
-   - Measures duration with ffprobe
-   - Builds shot list with timing
-
-4. **FFmpeg Service** (`app/services/ffmpeg_service.py`)
-   - Concatenates audio files
-   - Assembles final video with background + audio
-   - Adds synchronized captions using drawtext filter
+### Script Format
+- `t`: Full line for speaker to say
+- `c`: Short caption for screen
+- `s`: Speaker ID (for voice selection)
 
 ## Project Structure
 
 ```
-app/
-├── main.py                 # FastAPI app initialization
-├── api/
-│   └── routes/
-│       ├── ocr.py         # OCR endpoints
-│       ├── script.py      # Script generation endpoints
-│       ├── audio.py       # Audio generation endpoints
-│       └── video.py       # Video assembly endpoints
-├── services/
-│   ├── ocr_service.py     # OCR logic
-│   ├── gemini_service.py  # Gemini API integration
-│   ├── elevenlabs_service.py  # ElevenLabs TTS + timing
-│   └── ffmpeg_service.py  # Video assembly
-├── models/
-│   └── schemas.py         # Pydantic models
-├── core/
-│   └── config.py          # App configuration
-└── utils/
-    └── helpers.py         # Utility functions
+HackEmory/
+├── main.py                              # Basic FastAPI app
+├── frontend_pipeline/                   # Quick pipeline (OCR → Script)
+│   ├── ocr/                            # Slide text extraction
+│   ├── script_generation/              # Gemini script generation
+│   └── shared/                         # Shared frontend utilities
+└── backend_pipeline/                    # Slow pipeline (Audio → Video)
+    ├── audio_generation/               # ElevenLabs TTS + timing
+    ├── video_assembly/                 # FFmpeg video editing
+    └── shared/                         # Shared backend utilities
 ```
 
-## Setup
+## Team Workflow
 
-1. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+### Developer 1: Frontend Pipeline (Fast)
+**Focus**: `frontend_pipeline/`
+- **OCR**: Extract text from slides
+- **Script Gen**: Call Gemini to generate structured script
 
-2. **Set up environment variables**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your API keys
-   ```
+### Developer 2: Backend Pipeline (Slow - Takes Time!)
+**Focus**: `backend_pipeline/`
+- **Audio Gen**: Loop through script, call ElevenLabs, measure timing with ffprobe
+- **Video Assembly**: Concatenate audio, sync captions with FFmpeg
 
-3. **Run the server**
-   ```bash
-   uvicorn app.main:app --reload
-   ```
+## Why This Structure?
 
-4. **Access the API**
-   - API: http://localhost:8000
-   - Docs: http://localhost:8000/docs
+The backend pipeline (audio + video) is **time-intensive**:
+- Multiple API calls to ElevenLabs (one per line)
+- ffprobe measurements for each audio file
+- Complex FFmpeg filter chains
 
-## API Endpoints
+By separating folders, both developers can work in parallel without conflicts!
 
-### OCR
-- `POST /api/ocr/extract` - Extract text from slides
+## Quick Start
 
-### Script Generation
-- `POST /api/script/generate` - Generate structured script from transcript
+```bash
+# Run the basic FastAPI app
+uvicorn main:app --reload
 
-### Audio Generation
-- `POST /api/audio/generate` - Generate audio files with timing
-
-### Video Assembly
-- `POST /api/video/assemble` - Assemble final video
-
-## Development
-
-### Working on Different Features
-
-The project is organized so multiple developers can work independently:
-
-- **Developer 1**: Can work on OCR + Script Generation
-  - Files: `ocr.py`, `script.py`, `ocr_service.py`, `gemini_service.py`
-
-- **Developer 2**: Can work on Audio + Video Assembly
-  - Files: `audio.py`, `video.py`, `elevenlabs_service.py`, `ffmpeg_service.py`
-
-## Requirements
-
-- Python 3.9+
-- FFmpeg (system installation required)
-- Tesseract OCR (for OCR functionality)
-- API Keys:
-  - Gemini API
-  - ElevenLabs API
+# Visit http://localhost:8000
+```
