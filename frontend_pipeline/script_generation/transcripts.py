@@ -1,9 +1,9 @@
 import base64
 import os
 import json
-import dotenv
-from typing import Any, Dict, List
+from typing import Any, List
 
+import dotenv
 from google import genai
 from google.genai import types
 from pydantic import ValidationError
@@ -15,7 +15,10 @@ try:
         YOUTUBE_PROMPT,
         PPTX_PROMPT,
     )
-    from frontend_pipeline.script_generation.models import TranscriptResponse
+    from frontend_pipeline.script_generation.models import (
+        TranscriptResponse,
+        SubtopicDialogue,
+    )
 except ImportError:  # pragma: no cover - fallback when run as script
     from script_generation.prompts import (  # type: ignore
         AUDIO_PROMPT,
@@ -23,12 +26,10 @@ except ImportError:  # pragma: no cover - fallback when run as script
         YOUTUBE_PROMPT,
         PPTX_PROMPT,
     )
-    from script_generation.models import TranscriptResponse  # type: ignore
-
-def _ensure_text(data):
-    if isinstance(data, bytes):
-        return data.decode("utf-8")
-    return str(data)
+    from script_generation.models import (  # type: ignore
+        TranscriptResponse,
+        SubtopicDialogue,
+    )
 
 
 def _ensure_text(data):
@@ -37,15 +38,13 @@ def _ensure_text(data):
     return str(data)
 
 
-def _extend_from_payload(payload: Any, transcripts: List[Dict[str, str]]) -> bool:
+def _extend_from_payload(payload: Any, subtopics: List[SubtopicDialogue]) -> bool:
     try:
         model = TranscriptResponse.model_validate(payload)
     except ValidationError:
         return False
 
-    for subtopic in model.subtopic_transcripts:
-        for line in subtopic.dialogue:
-            transcripts.append({"caption": line.caption, "speaker": line.speaker})
+    subtopics.extend(model.subtopic_transcripts)
     return True
 
 
@@ -129,7 +128,7 @@ def extract_transcripts(file, file_type):
         system_instruction=prompt
     )
 
-    transcripts = []
+    subtopic_transcripts: List[SubtopicDialogue] = []
     for chunk in client.models.generate_content_stream(
         model=model,
         contents=contents,
@@ -145,10 +144,9 @@ def extract_transcripts(file, file_type):
         # Try JSON parse of the text payload
         try:
             parsed = json.loads(text)
-            if isinstance(parsed, dict) and _extend_from_payload(parsed, transcripts):
+            if isinstance(parsed, dict) and _extend_from_payload(parsed, subtopic_transcripts):
                 continue
         except Exception:
-            # not JSON or not the structured payload we expect
             pass
 
         # Fallback: inspect attributes/model dump for structured data
@@ -181,12 +179,13 @@ def extract_transcripts(file, file_type):
                             break
 
         if resp_data and isinstance(resp_data, dict):
-            _extend_from_payload(resp_data, transcripts)
+            _extend_from_payload(resp_data, subtopic_transcripts)
 
-    return transcripts
+    return subtopic_transcripts
 
 if __name__ == "__main__":
     file = "C:\\Users\\Chris\\Downloads\\The essence of calculus.mp3"
     file_type = "audio/mp3"
     transcripts = extract_transcripts(file, file_type)
-    print(transcripts)
+    for subtopic in transcripts:
+        print(subtopic.model_dump())

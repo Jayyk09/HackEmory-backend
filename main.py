@@ -13,24 +13,25 @@ from backend_pipeline.video_assembly.ffMpeg import (
     create_video_with_audio_and_captions,
 )
 
-app = FastAPI(
-    title="Video Generation API",
-    description="API for generating videos from slides",
-    version="1.0.0"
-)
-
 BACKGROUND_VIDEO = Path("assets/audio/videos/minecraft.mp4")
 OUTPUT_DIR = Path("assets/output")
 TEMP_UPLOAD_DIR = Path("tmp/uploads")
+GENERATED_AUDIO_DIR = Path("assets/audio/generated")
 
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 TEMP_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+GENERATED_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(
     title="Video Generation API",
     description="API for generating videos from slides",
     version="1.0.0"
 )
+
+def _slugify(value: str) -> str:
+    safe = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in value.strip())
+    return safe[:40] or "subtopic"
+
 
 @app.get("/")
 async def root():
@@ -58,12 +59,6 @@ def _validate_background_video():
             status_code=500,
             detail=f"Background video not found at {BACKGROUND_VIDEO}",
         )
-
-
-def _build_transcript_payload(transcripts):
-    if not transcripts:
-        raise HTTPException(status_code=502, detail="No transcripts returned from model")
-    return {"transcripts": transcripts}
 
 
 def _move_upload_to_disk(upload: UploadFile, destination: Path):
@@ -120,27 +115,48 @@ async def generate_video(
             transcript_source = content
             transcript_type = "youtube"
 
-        transcripts = await _run_blocking(extract_transcripts, transcript_source, transcript_type)
-        transcript_payload = _build_transcript_payload(transcripts)
-
-        audio_segments = await _run_blocking(generate_audio_from_transcript, transcript_payload)
-        audio_result = await _run_blocking(concatenate_audio_segments, audio_segments)
+        subtopics = await _run_blocking(extract_transcripts, transcript_source, transcript_type)
+        if not subtopics:
+            raise HTTPException(status_code=502, detail="No subtopics returned from model output.")
 
         _validate_background_video()
-        output_path = OUTPUT_DIR / f"video_{uuid4().hex}.mp4"
-        video_path = await _run_blocking(
-            create_video_with_audio_and_captions,
-            str(BACKGROUND_VIDEO),
-            audio_result["audio_file"],
-            audio_result["timings"],
-            str(output_path),
-        )
+
+        video_results = []
+
+        for subtopic in subtopics:
+            dialogue_payload = {
+                "transcripts": [line.model_dump() for line in subtopic.dialogue]
+            }
+            audio_segments = await _run_blocking(generate_audio_from_transcript, dialogue_payload)
+
+            safe_title = _slugify(subtopic.subtopic_title)
+            audio_output_path = GENERATED_AUDIO_DIR / f"{safe_title}_{uuid4().hex}.mp3"
+            audio_result = await _run_blocking(
+                concatenate_audio_segments,
+                audio_segments,
+                str(audio_output_path),
+            )
+
+            video_output_path = OUTPUT_DIR / f"{safe_title}_{uuid4().hex}.mp4"
+            video_path = await _run_blocking(
+                create_video_with_audio_and_captions,
+                str(BACKGROUND_VIDEO),
+                audio_result["audio_file"],
+                audio_result["timings"],
+                str(video_output_path),
+            )
+
+            video_results.append({
+                "subtopic_title": subtopic.subtopic_title,
+                "video_path": video_path,
+                "audio_file": audio_result["audio_file"],
+                "duration_seconds": audio_result["total_duration"],
+                "segments": len(audio_result["timings"]),
+            })
 
         return {
-            "video_path": video_path,
-            "audio_file": audio_result["audio_file"],
-            "duration_seconds": audio_result["total_duration"],
-            "segments": len(audio_result["timings"]),
+            "count": len(video_results),
+            "results": video_results,
         }
     finally:
         if temp_audio_path and temp_audio_path.exists():
