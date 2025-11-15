@@ -90,12 +90,13 @@ def create_video_with_audio_and_captions(
     for timing in caption_timings:
         # Wrap and escape caption text
         wrapped_text = wrap_caption_text(timing["caption"])
+        
+        # The \n from textwrap should be passed to ffmpeg as a literal newline
         caption_text = (
             wrapped_text
             .replace("\\", "\\\\")
             .replace("'", "'\\\\\\''")
             .replace(":", "\\:")
-            .replace("\n", "\\n")
         )
         speaker = timing["speaker"]
         
@@ -115,7 +116,8 @@ def create_video_with_audio_and_captions(
             f"fontcolor={color}:"
             f"box=1:boxcolor={bg_color}:boxborderw=10:"
             f"x=(w-tw)/2:"  # Center horizontally
-            f"y=h-320:"  # Position near bottom
+            f"y=(h-th)/2:"  # --- FIX 4: Center vertically ---
+            f"text_align=C:"
             f"enable='between(t,{timing['start']},{timing['end']})':"
             f"line_spacing=18"
         )
@@ -134,37 +136,47 @@ def create_video_with_audio_and_captions(
     current_stream = "[bg]"
     input_index = 2  # 0=background, 1=audio, 2+=character images
     
-    # Add character overlays if images exist
-    character_height = 320
-    margin = 40
+    # --- FIX 3: Ensure Peter is always input_index 2, Stewie always input_index 3 (or next available) ---
+    # This prevents speaker switching based on the order of if statements.
+    # We now map the inputs correctly and then use the correct overlay index.
     
-    if stewie_image:
-        # Scale and overlay Stewie on bottom left
-        filter_parts.append(
-            f"[{input_index}:v]scale=-1:{character_height}[stewie]"
-        )
-        filter_parts.append(
-            f"{current_stream}[stewie]overlay={margin}:H-h-{margin}:enable='{stewie_enable}'[tmp{input_index}]"
-        )
-        current_stream = f"[tmp{input_index}]"
-        input_index += 1
-    
+    # Prepare character images as separate streams FIRST
+    peter_stream_name = ""
+    stewie_stream_name = ""
+
     if peter_image:
-        # Scale and overlay Peter on bottom right
         filter_parts.append(
-            f"[{input_index}:v]scale=-1:{character_height}[peter]"
+            f"[{input_index}:v]scale=-1:{character_height}[peter_scaled]"
         )
-        filter_parts.append(
-            f"{current_stream}[peter]overlay=W-w-{margin}:H-h-{margin}:enable='{peter_enable}'[tmp{input_index}]"
-        )
-        current_stream = f"[tmp{input_index}]"
+        peter_stream_name = f"[peter_scaled]"
         input_index += 1
+
+    if stewie_image:
+        filter_parts.append(
+            f"[{input_index}:v]scale=-1:{character_height}[stewie_scaled]"
+        )
+        stewie_stream_name = f"[stewie_scaled]"
+        input_index += 1
+    
+    # Overlay Peter on bottom left
+    if peter_image:
+        filter_parts.append(
+            f"{current_stream}{peter_stream_name}overlay={margin}:H-h-{margin}:enable='{peter_enable}'[tmp_peter]"
+        )
+        current_stream = "[tmp_peter]"
+    
+    # Overlay Stewie on bottom right
+    if stewie_image:
+        filter_parts.append(
+            f"{current_stream}{stewie_stream_name}overlay=W-w-{margin}:H-h-{margin}:enable='{stewie_enable}'[tmp_stewie]"
+        )
+        current_stream = "[tmp_stewie]"
     
     # Add captions on top
     if all_captions:
         filter_parts.append(f"{current_stream}{all_captions}[v]")
     else:
-        filter_parts.append(f"{current_stream}split[v]")
+        filter_parts.append(f"{current_stream}split[v]") # Use split to ensure a named output stream even if no captions
     
     filter_complex = ";".join(filter_parts)
     
@@ -178,11 +190,12 @@ def create_video_with_audio_and_captions(
         "-i", audio_file,
     ]
     
-    # Add character image inputs
-    if stewie_image:
-        cmd.extend(["-loop", "1", "-i", stewie_image])
+    # Add character image inputs based on whether they exist
+    # The order here defines their input_index (e.g., -i peter.png is input 2, -i stewie.png is input 3)
     if peter_image:
         cmd.extend(["-loop", "1", "-i", peter_image])
+    if stewie_image:
+        cmd.extend(["-loop", "1", "-i", stewie_image])
     
     # Add filter complex and output settings
     cmd.extend([
@@ -236,3 +249,14 @@ if __name__ == "__main__":
     print("FFmpeg video assembly module ready!")
     print("Use create_video_with_audio_and_captions() to generate videos.")
 
+    # You would need to add your actual assets and timings here to run it
+    # example_timings = [
+    #     {"start": 1.0, "end": 3.5, "caption": "This is a very long caption that should definitely wrap and be centered", "speaker": "PETER"},
+    #     {"start": 4.0, "end": 6.0, "caption": "And this is Stewie speaking from his side of the screen", "speaker": "STEWIE"},
+    # ]
+    # 
+    # create_video_with_audio_and_captions(
+    #     background_video="assets/background/minecraft.mp4",
+    #     audio_file="assets/audio/my_audio.mp3",
+    #     caption_timings=example_timings
+    # )
