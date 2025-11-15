@@ -13,7 +13,7 @@ from frontend_pipeline.script_generation.transcripts import extract_transcripts
 from backend_pipeline.generate_subtopic_videos import (
     generate_videos_from_subtopic_list,
 )
-import account_service
+import save_to_db.account_service as account_service
 
 BACKGROUND_VIDEO = Path("assets/videos/minecraft.mp4")
 OUTPUT_DIR = Path("assets/output")
