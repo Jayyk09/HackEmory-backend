@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from uuid import uuid4
 import mimetypes
-from typing import BinaryIO
+from typing import BinaryIO, List, Dict, Any
 
 import boto3
 import psycopg2
@@ -134,6 +134,57 @@ def get_video_url(user_id: int, video_id: int) -> str:
     return presigned_url
 
 
+def get_user_videos(
+    user_id: int,
+    offset: int = 0,
+    limit: int = 5,
+) -> List[Dict[str, Any]]:
+    """
+    Return up to `limit` videos for a given user, starting at `offset`,
+    each with a presigned URL.
+
+    Ordered by newest first (created_at DESC, id DESC).
+    """
+    conn = get_db_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, s3_key, video_title, video_description, created_at
+                FROM videos
+                WHERE user_id = %s
+                ORDER BY created_at DESC, id DESC
+                OFFSET %s
+                LIMIT %s;
+                """,
+                (user_id, offset, limit),
+            )
+            rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    videos: List[Dict[str, Any]] = []
+    for vid_id, s3_key, title, desc, created_at in rows:
+        presigned_url = s3.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": BUCKET_NAME, "Key": s3_key},
+            ExpiresIn=3600,  # 1 hour
+        )
+        videos.append(
+            {
+                "id": vid_id,
+                "user_id": user_id,
+                "s3_key": s3_key,
+                "video_title": title,
+                "video_description": desc,
+                "created_at": created_at,
+                "presigned_url": presigned_url,
+            }
+        )
+
+    return videos
+
+
 def main():
     # Demo only: open a local file as a file object
     user_id = 1  # replace with real user id in your app
@@ -153,10 +204,11 @@ def main():
 
     print("New video id:", video_id)
 
-    # 2) Get ONLY the presigned URL using user_id + video_id
-    url = get_video_url(user_id=user_id, video_id=video_id)
-    print("Presigned URL to send to frontend:")
-    print(url)
+    # 2) Get up to 5 most recent videos for this user, starting at index 0
+    videos = get_user_videos(user_id=user_id, offset=0, limit=5)
+    print("Videos for user 1:")
+    for v in videos:
+        print(v["id"], v["presigned_url"])
 
 
 if __name__ == "__main__":

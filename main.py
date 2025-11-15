@@ -4,7 +4,9 @@ from pathlib import Path
 from typing import List
 from uuid import uuid4
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Query
+
+from save_to_db.save_video import get_user_videos
 from pydantic import BaseModel
 
 from frontend_pipeline.script_generation.transcripts import extract_transcripts
@@ -209,3 +211,47 @@ async def generate_video(
     finally:
         if temp_audio_path and temp_audio_path.exists():
             temp_audio_path.unlink()
+
+
+
+def get_current_user_id() -> int:
+    # TODO: replace with your real auth
+    # e.g., read from JWT/session/JWT claims
+    return 1
+
+
+@app.get("/videos")
+async def list_user_videos(
+    start: int = Query(0, ge=0, description="Index into the user's video list"),
+    user_id: int = Depends(get_current_user_id),
+):
+    """
+    Return up to 5 videos for the current user, starting at index `start`.
+    Each video includes only: id, title, description, presigned_url.
+    """
+    try:
+        videos = await _run_blocking(
+            get_user_videos,
+            user_id,
+            start,
+            5,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # Strip down to the fields you actually want to expose
+    simplified = [
+        {
+            "id": v["id"],
+            "title": v["video_title"],
+            "description": v["video_description"],
+            "presigned_url": v["presigned_url"],
+        }
+        for v in videos
+    ]
+
+    return {
+        "start": start,
+        "count": len(simplified),
+        "videos": simplified,
+    }
