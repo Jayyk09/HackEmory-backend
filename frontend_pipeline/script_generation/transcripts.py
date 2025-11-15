@@ -20,7 +20,6 @@ except ImportError:  # pragma: no cover - fallback when run as script
         PPTX_PROMPT,
     )
 
-
 def _ensure_text(data):
     if isinstance(data, bytes):
         return data.decode("utf-8")
@@ -103,25 +102,42 @@ def extract_transcripts(file, file_type):
             image_size="1K",
         ),
         response_mime_type="application/json",
-        response_schema=genai.types.Schema(
-            type = genai.types.Type.OBJECT,
-            properties = {
-                "transcripts": genai.types.Schema(
-                    type = genai.types.Type.ARRAY,
-                    items = genai.types.Schema(
-                        type = genai.types.Type.OBJECT,
-                        properties = {
-                            "caption": genai.types.Schema(
-                                type = genai.types.Type.STRING,
-                            ),
-                            "speaker": genai.types.Schema(
-                                type = genai.types.Type.STRING,
-                            ),
+        response_schema = {
+            "type": "OBJECT",
+            "properties": {
+                "subtopic_transcripts": {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "subtopic_title": {
+                                "type": "STRING",
+                                "description": "A short title for the distinct subtopic."
+                            },
+                            "dialogue": {
+                                "type": "ARRAY",
+                                "items": {
+                                    "type": "OBJECT",
+                                    "properties": {
+                                        "caption": {
+                                            "type": "STRING",
+                                            "description": "A single sentence under 20 words."
+                                        },
+                                        "speaker": {
+                                            "type": "STRING",
+                                            "enum": ["PETER", "STEWIE"]
+                                        }
+                                    },
+                                    "required": ["caption", "speaker"]
+                                }
+                            }
                         },
-                    ),
-                ),
+                        "required": ["subtopic_title", "dialogue"]
+                    }
+                }
             },
-        ),
+            "required": ["subtopic_transcripts"]
+        },
         system_instruction=prompt
     )
 
