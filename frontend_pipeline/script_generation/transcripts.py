@@ -2,8 +2,11 @@ import base64
 import os
 import json
 import dotenv
+from typing import Any, Dict, List
+
 from google import genai
 from google.genai import types
+from pydantic import ValidationError
 
 try:
     from frontend_pipeline.script_generation.prompts import (
@@ -12,6 +15,7 @@ try:
         YOUTUBE_PROMPT,
         PPTX_PROMPT,
     )
+    from frontend_pipeline.script_generation.models import TranscriptResponse
 except ImportError:  # pragma: no cover - fallback when run as script
     from script_generation.prompts import (  # type: ignore
         AUDIO_PROMPT,
@@ -19,11 +23,30 @@ except ImportError:  # pragma: no cover - fallback when run as script
         YOUTUBE_PROMPT,
         PPTX_PROMPT,
     )
+    from script_generation.models import TranscriptResponse  # type: ignore
 
 def _ensure_text(data):
     if isinstance(data, bytes):
         return data.decode("utf-8")
     return str(data)
+
+
+def _ensure_text(data):
+    if isinstance(data, bytes):
+        return data.decode("utf-8")
+    return str(data)
+
+
+def _extend_from_payload(payload: Any, transcripts: List[Dict[str, str]]) -> bool:
+    try:
+        model = TranscriptResponse.model_validate(payload)
+    except ValidationError:
+        return False
+
+    for subtopic in model.subtopic_transcripts:
+        for line in subtopic.dialogue:
+            transcripts.append({"caption": line.caption, "speaker": line.speaker})
+    return True
 
 
 def extract_transcripts(file, file_type):
@@ -102,42 +125,7 @@ def extract_transcripts(file, file_type):
             image_size="1K",
         ),
         response_mime_type="application/json",
-        response_schema = {
-            "type": "OBJECT",
-            "properties": {
-                "subtopic_transcripts": {
-                    "type": "ARRAY",
-                    "items": {
-                        "type": "OBJECT",
-                        "properties": {
-                            "subtopic_title": {
-                                "type": "STRING",
-                                "description": "A short title for the distinct subtopic."
-                            },
-                            "dialogue": {
-                                "type": "ARRAY",
-                                "items": {
-                                    "type": "OBJECT",
-                                    "properties": {
-                                        "caption": {
-                                            "type": "STRING",
-                                            "description": "A single sentence under 20 words."
-                                        },
-                                        "speaker": {
-                                            "type": "STRING",
-                                            "enum": ["PETER", "STEWIE"]
-                                        }
-                                    },
-                                    "required": ["caption", "speaker"]
-                                }
-                            }
-                        },
-                        "required": ["subtopic_title", "dialogue"]
-                    }
-                }
-            },
-            "required": ["subtopic_transcripts"]
-        },
+        response_schema = TranscriptResponse.model_json_schema(),
         system_instruction=prompt
     )
 
@@ -157,8 +145,7 @@ def extract_transcripts(file, file_type):
         # Try JSON parse of the text payload
         try:
             parsed = json.loads(text)
-            if isinstance(parsed, dict) and "transcripts" in parsed:
-                transcripts.extend(parsed.get("transcripts", []))
+            if isinstance(parsed, dict) and _extend_from_payload(parsed, transcripts):
                 continue
         except Exception:
             # not JSON or not the structured payload we expect
@@ -193,10 +180,8 @@ def extract_transcripts(file, file_type):
                             resp_data = out["data"]
                             break
 
-        if resp_data:
-            # resp_data might be a dict with our 'transcripts' key
-            if isinstance(resp_data, dict) and "transcripts" in resp_data:
-                transcripts.extend(resp_data.get("transcripts", []))
+        if resp_data and isinstance(resp_data, dict):
+            _extend_from_payload(resp_data, transcripts)
 
     return transcripts
 
