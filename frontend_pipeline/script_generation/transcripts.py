@@ -6,7 +6,7 @@ from google import genai
 from google.genai import types
 
 
-def extract_transcripts(audio_file_path, video_file_type):
+def extract_transcripts(file, file_type):
     dotenv.load_dotenv()
     api_key = os.getenv("GEMINI_API_KEY")
     client = genai.Client(api_key=api_key)
@@ -14,23 +14,327 @@ def extract_transcripts(audio_file_path, video_file_type):
     model = "gemini-2.5-flash"
 
     # Read the audio file and provide base64-encoded data to the Blob.
-    if not os.path.isfile(audio_file_path):
-        raise FileNotFoundError(f"Audio file not found: {audio_file_path}")
+    #if not os.path.isfile(audio_file_path):
+        #raise FileNotFoundError(f"Audio file not found: {audio_file_path}")
 
-    with open(audio_file_path, "rb") as f:
-        audio_bytes = f.read()
 
     # Blob expects base64-encoded bytes (the pydantic validator rejects a plain path string).
-    audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
+    if file_type == "audio/mp3":
+        with open(file, "rb") as f:
+            audio_bytes = f.read()
+        audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+        contents = [
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part(inline_data=types.Blob(data=audio_b64, mime_type="audio/mp3")),
+                ],
+            ),
+        ]
+        prompt = [
+            types.Part.from_text(text="""You are to generate short-form educational dialogues between Peter Griffin and Stewie Griffin.
 
-    contents = [
-        types.Content(
-            role="user",
-            parts=[
-                types.Part(inline_data=types.Blob(data=audio_b64, mime_type="audio/mp3")),
-            ],
-        ),
-    ]
+I will give you an audio input (for example, an audio recording of a university lecture). Your job is to:
+
+Listen to or process the audio's content.
+
+Identify the distinct subtopics discussed in the audio.
+
+For EACH distinct subtopic, generate a separate short-form educational dialogue (~1 minute transcript, 120-150 words) summarizing that specific subtopic.
+
+Output a SINGLE JSON object that contains all of these transcripts, structured exactly like this:
+
+JSON
+{
+  "subtopic_transcripts": [
+    {
+      "subtopic_title": "A short title for the first distinct subtopic.",
+      "dialogue": [
+        {
+          "caption": "A single sentence under 20 words.",
+          "speaker": "PETER"
+        },
+        {
+          "caption": "Another single sentence under 20 words.",
+          "speaker": "STEWIE"
+        }
+      ]
+    },
+    {
+      "subtopic_title": "A short title for the second distinct subtopic.",
+      "dialogue": [
+        {
+          "caption": "This dialogue is about the second subtopic.",
+          "speaker": "PETER"
+        },
+        {
+          "caption": "Fascinating! But what about...?",
+          "speaker": "STEWIE"
+        }
+      ]
+    }
+  ]
+}
+RULES:
+
+You must generate one transcript object (with a "subtopic_title" and "dialogue" array) for each main, distinct subtopic you identify in the audio.
+
+Each "caption" must be one sentence only, 20 words or fewer.
+
+Speakers must be only "PETER" or "STEWIE".
+
+The "subtopic_title" should be a brief, descriptive string.
+
+The tone for EACH dialogue should resemble Peter teaching and Stewie asking curious questions.
+
+EACH dialogue must be conversational and humorous, but still educational about its subtopic.
+
+In EACH "dialogue" array, Stewie must ask at least one question about that specific subtopic.
+
+EACH "dialogue" array should total roughly 1 minute of spoken dialogue (approx. 120-150 words).
+                                 
+Make NO reference to images or visual elements, aside from examples such as "imagine a chart showing..." or "picture this scenario...".
+
+NO extra text—only the single JSON object containing all generated transcripts.
+
+After I provide the audio input, respond ONLY with the JSON result."""),
+        ]
+    elif file_type == "text":
+        text_data = bytes.decode("utf-8")
+        contents = [
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_text(text=text_data),
+                ],
+            ),
+        ]
+        prompt = [
+            types.Part.from_text(text="""You are to generate short-form educational dialogues between Peter Griffin and Stewie Griffin.
+
+I will give you a text input (for example, a transcript from a lecture or video). Your job is to:
+
+Read and process the text's content.
+
+Identify the distinct subtopics discussed in the text.
+
+For EACH distinct subtopic, generate a separate short-form educational dialogue (~1 minute transcript, 120-150 words) summarizing that specific subtopic.
+
+Output a SINGLE JSON object that contains all of these transcripts, structured exactly like this:
+
+JSON
+{
+  "subtopic_transcripts": [
+    {
+      "subtopic_title": "A short title for the first distinct subtopic.",
+      "dialogue": [
+        {
+          "caption": "A single sentence under 20 words.",
+          "speaker": "PETER"
+        },
+        {
+          "caption": "Another single sentence under 20 words.",
+          "speaker": "STEWIE"
+        }
+      ]
+    },
+    {
+      "subtopic_title": "A short title for the second distinct subtopic.",
+      "dialogue": [
+        {
+          "caption": "This dialogue is about the second subtopic.",
+          "speaker": "PETER"
+        },
+        {
+          "caption": "Fascinating! But what about...?",
+          "speaker": "STEWIE"
+        }
+      ]
+    }
+  ]
+}
+RULES:
+
+You must generate one transcript object (with a "subtopic_title" and "dialogue" array) for each main, distinct subtopic you identify in the text.
+
+Each "caption" must be one sentence only, 20 words or fewer.
+
+Speakers must be only "PETER" or "STEWIE".
+
+The "subtopic_title" should be a brief, descriptive string.
+
+The tone for EACH dialogue should resemble Peter teaching and Stewie asking curious questions.
+
+EACH dialogue must be conversational and humorous, but still educational about its subtopic.
+
+In EACH "dialogue" array, Stewie must ask at least one question about that specific subtopic.
+
+EACH "dialogue" array should total roughly 1 minute of spoken dialogue (approx. 120-150 words).
+                                 
+Make NO reference to images or visual elements, aside from examples such as "imagine a chart showing..." or "picture this scenario...".
+
+NO extra text—only the single JSON object containing all generated transcripts.
+
+After I provide the text input, respond ONLY with the JSON result."""),
+        ]
+    elif file_type == "youtube":
+        youtube_url = bytes.decode("utf-8")
+        contents = [
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_text(text=youtube_url),
+                ],
+            ),
+        ]
+        prompt = [
+            types.Part.from_text(text="""You are to generate short-form educational dialogues between Peter Griffin and Stewie Griffin.
+
+I will give you a YouTube link. Your job is to:
+
+Watch or process the video’s content.
+
+Identify the distinct subtopics discussed in the video.
+
+For EACH distinct subtopic, generate a separate short-form educational dialogue (~1 minute transcript, 120-150 words) summarizing that specific subtopic.
+
+Output a SINGLE JSON object that contains all of these transcripts, structured exactly like this:
+
+JSON
+{
+  "transcripts": [
+    {
+      "subtopic_title": "A short title for the first distinct subtopic.",
+      "dialogue": [
+        {
+          "caption": "A single sentence under 20 words.",
+          "speaker": "PETER"
+        },
+        {
+          "caption": "Another single sentence under 20 words.",
+          "speaker": "STEWIE"
+        }
+      ]
+    },
+    {
+      "subtopic_title": "A short title for the second distinct subtopic.",
+      "dialogue": [
+        {
+          "caption": "This dialogue is about the second subtopic.",
+          "speaker": "PETER"
+        },
+        {
+          "caption": "Fascinating! But what about...?",
+          "speaker": "STEWIE"
+        }
+      ]
+    }
+  ]
+}
+RULES:
+
+You must generate one transcript object (with a "subtopic_title" and "dialogue" array) for each main, distinct subtopic you identify in the video.
+
+Each "caption" must be one sentence only, 20 words or fewer.
+
+Speakers must be only "PETER" or "STEWIE".
+
+The "subtopic_title" should be a brief, descriptive string.
+
+The tone for EACH dialogue should resemble Peter teaching and Stewie asking curious questions.
+
+EACH dialogue must be conversational and humorous, but still educational about its subtopic.
+
+In EACH "dialogue" array, Stewie must ask at least one question about that specific subtopic.
+
+EACH "dialogue" array should total roughly 1 minute of spoken dialogue (approx. 120-150 words).
+                                 
+Make NO reference to images or visual elements, aside from examples such as "imagine a chart showing..." or "picture this scenario...".
+
+NO extra text—only the single JSON object containing all generated transcripts.
+
+After I send the YouTube link, respond ONLY with the JSON result."""
+                                )
+        ]
+    elif file_type == "pptx":
+        pptx_data = bytes.decode("utf-8")
+        contents = [
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_text(text=pptx_data),
+                ],
+            ),
+        ]
+        prompt = [
+            types.Part.from_text(text="""You are to generate short-form educational dialogues between Peter Griffin and Stewie Griffin.
+
+I will give you a text input (for example, a transcript from a lecture or video). Your job is to:
+
+Read and process the text's content.
+
+Identify the distinct subtopics discussed in the text.
+
+For EACH distinct subtopic, generate a separate short-form educational dialogue (~1 minute transcript, 120-150 words) summarizing that specific subtopic.
+
+Output a SINGLE JSON object that contains all of these transcripts, structured exactly like this:
+JSON
+{
+  "subtopic_transcripts": [
+    {
+      "subtopic_title": "A short title for the first distinct subtopic.",
+      "dialogue": [
+        {
+          "caption": "A single sentence under 20 words.",
+          "speaker": "PETER"
+        },
+        {
+          "caption": "Another single sentence under 20 words.",
+          "speaker": "STEWIE"
+        }
+      ]
+    },
+    {
+      "subtopic_title": "A short title for the second distinct subtopic.",
+      "dialogue": [
+        {
+          "caption": "This dialogue is about the second subtopic.",
+          "speaker": "PETER"
+        },
+        {
+          "caption": "Fascinating! But what about...?",
+          "speaker": "STEWIE"
+        }
+      ]
+    }
+  ]
+}
+RULES:
+
+You must generate one transcript object (with a "subtopic_title" and "dialogue" array) for each main, distinct subtopic you identify in the text.
+
+Each "caption" must be one sentence only, 20 words or fewer.
+
+Speakers must be only "PETER" or "STEWIE".
+
+The "subtopic_title" should be a brief, descriptive string.
+
+The tone for EACH dialogue should resemble Peter teaching and Stewie asking curious questions.
+
+EACH dialogue must be conversational and humorous, but still educational about its subtopic.
+
+In EACH "dialogue" array, Stewie must ask at least one question about that specific subtopic.
+
+EACH "dialogue" array should total roughly 1 minute of spoken dialogue (approx. 120-150 words).
+                                 
+Make NO reference to images or visual elements, aside from examples such as "imagine a chart showing..." or "picture this scenario...".
+
+NO extra text—only the single JSON object containing all generated transcripts.
+
+After I provide the text input, respond ONLY with the JSON result."""
+                                )
+        ]
+                                 
     generate_content_config = types.GenerateContentConfig(
         thinking_config = types.ThinkingConfig(
             thinking_budget=0,
@@ -58,9 +362,7 @@ def extract_transcripts(audio_file_path, video_file_type):
                 ),
             },
         ),
-        system_instruction=[
-            types.Part.from_text(text="""Generate a conscise summary of the entire lecture audio in the form of a transcript for a educational TikTok/short form content video depicting Peter Griffin educating a curious Stewie Griffin on the subject matter. The transcript should correspond to roughly 1 minute of audio when fed to a text-to-speech model. Separate the outputs into JSON objects with a caption and speaker string, where the caption is at most a sentence long and the speaker is either 'PETER' or 'STEWIE'. Feel free to have multiple captions with the same speaker back to back, but ensure that each caption is at most one sentence long."""),
-        ],
+        system_instruction=prompt
     )
 
     transcripts = []
@@ -123,7 +425,7 @@ def extract_transcripts(audio_file_path, video_file_type):
     return transcripts
 
 if __name__ == "__main__":
-    audio_file_path = "C:\\Users\\Chris\\Downloads\\The essence of calculus.mp3"
-    video_file_type = "tiktok"
-    transcripts = extract_transcripts(audio_file_path, video_file_type)
+    file = "C:\\Users\\Chris\\Downloads\\The essence of calculus.mp3"
+    file_type = "audio/mp3"
+    transcripts = extract_transcripts(file, file_type)
     print(transcripts)
