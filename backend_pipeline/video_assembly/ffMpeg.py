@@ -103,10 +103,10 @@ def create_video_with_audio_and_captions(
         # Style for captions
         if speaker == "PETER":
             color = "white"
-            bg_color = "0x00000080"  # Semi-transparent black
+            bg_color = "0x00000080"  
         else:
             color = "yellow"
-            bg_color = "0x0000FF80"  # Semi-transparent blue
+            bg_color = "0x0000FF80"  
         
         # Create drawtext filter for this caption with manual wrapping
         caption_filter = (
@@ -115,8 +115,8 @@ def create_video_with_audio_and_captions(
             f"fontsize=54:"
             f"fontcolor={color}:"
             f"box=1:boxcolor={bg_color}:boxborderw=10:"
-            f"x=(w-tw)/2:"  # Center horizontally
-            f"y=(h-th)/2:"  # --- FIX 4: Center vertically ---
+            f"x=(w-tw)/2:" 
+            f"y=(h-th)/2:" 
             f"text_align=C:"
             f"enable='between(t,{timing['start']},{timing['end']})':"
             f"line_spacing=18"
@@ -135,6 +135,8 @@ def create_video_with_audio_and_captions(
     
     current_stream = "[bg]"
     input_index = 2  # 0=background, 1=audio, 2+=character images
+    character_height = 480
+    margin = 10
     
     # --- FIX 3: Ensure Peter is always input_index 2, Stewie always input_index 3 (or next available) ---
     # This prevents speaker switching based on the order of if statements.
@@ -159,18 +161,19 @@ def create_video_with_audio_and_captions(
         input_index += 1
     
     # Overlay Peter on bottom left
-    if peter_image:
-        filter_parts.append(
-            f"{current_stream}{peter_stream_name}overlay={margin}:H-h-{margin}:enable='{peter_enable}'[tmp_peter]"
-        )
-        current_stream = "[tmp_peter]"
-    
-    # Overlay Stewie on bottom right
+    # Overlay Stewie on bottom left
     if stewie_image:
         filter_parts.append(
-            f"{current_stream}{stewie_stream_name}overlay=W-w-{margin}:H-h-{margin}:enable='{stewie_enable}'[tmp_stewie]"
+            f"{current_stream}{stewie_stream_name}overlay={margin}:H-h-{margin}:enable='{stewie_enable}'[tmp_stewie]"
         )
         current_stream = "[tmp_stewie]"
+
+    # Overlay Peter on bottom right
+    if peter_image:
+        filter_parts.append(
+            f"{current_stream}{peter_stream_name}overlay=W-w-{margin}:H-h-{margin}:enable='{peter_enable}'[tmp_peter]"
+        )
+        current_stream = "[tmp_peter]"
     
     # Add captions on top
     if all_captions:
