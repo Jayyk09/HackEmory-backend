@@ -51,6 +51,9 @@ def _extend_from_payload(payload: Any, subtopics: List[SubtopicDialogue]) -> boo
 def extract_transcripts(file, file_type):
     dotenv.load_dotenv()
     api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY not set")
+    
     client = genai.Client(api_key=api_key)
 
     model = "gemini-2.5-flash"
@@ -62,6 +65,8 @@ def extract_transcripts(file, file_type):
 
     # Blob expects base64-encoded bytes (the pydantic validator rejects a plain path string).
     if file_type == "audio/mp3":
+        if not os.path.isfile(file):
+            raise FileNotFoundError(f"Audio file not found: {file}")
         with open(file, "rb") as f:
             audio_bytes = f.read()
         audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
@@ -129,6 +134,8 @@ def extract_transcripts(file, file_type):
     )
 
     subtopic_transcripts: List[SubtopicDialogue] = []
+    accumulated_text = ""  # Accumulate all text chunks
+    
     for chunk in client.models.generate_content_stream(
         model=model,
         contents=contents,
@@ -139,15 +146,17 @@ def extract_transcripts(file, file_type):
         # the printed text as JSON (most reliable for structured outputs). If
         # that fails, fall back to attribute inspection.
         text = getattr(chunk, "text", None) or ""
-        print(text, end="")
+        
+        # Accumulate text for final parsing
+        accumulated_text += text
 
-        # Try JSON parse of the text payload
+        # Try JSON parse of the accumulated text (in case complete JSON is ready)
         try:
-            parsed = json.loads(text)
+            parsed = json.loads(accumulated_text)
             if isinstance(parsed, dict) and _extend_from_payload(parsed, subtopic_transcripts):
-                continue
+                break  # Successfully parsed, no need to continue
         except Exception:
-            pass
+            pass  # Not complete JSON yet, continue accumulating
 
         # Fallback: inspect attributes/model dump for structured data
         resp_data = None
@@ -179,7 +188,17 @@ def extract_transcripts(file, file_type):
                             break
 
         if resp_data and isinstance(resp_data, dict):
-            _extend_from_payload(resp_data, subtopic_transcripts)
+            if _extend_from_payload(resp_data, subtopic_transcripts):
+                break
+    
+    # Final attempt: parse accumulated text if not already parsed
+    if not subtopic_transcripts and accumulated_text:
+        try:
+            parsed = json.loads(accumulated_text)
+            if isinstance(parsed, dict):
+                _extend_from_payload(parsed, subtopic_transcripts)
+        except Exception:
+            pass
 
     return subtopic_transcripts
 

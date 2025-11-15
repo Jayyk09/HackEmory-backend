@@ -79,6 +79,35 @@ def _move_upload_to_disk(upload: UploadFile, destination: Path):
     upload.file.close()
 
 
+async def _generate_videos(subtopics, prefix: str):
+    session_id = uuid4().hex
+    video_output_dir = OUTPUT_DIR / f"{prefix}_{session_id}"
+    audio_output_dir = GENERATED_AUDIO_DIR / f"{prefix}_{session_id}"
+    return await _run_blocking(
+        generate_videos_from_subtopic_list,
+        subtopics,
+        str(BACKGROUND_VIDEO),
+        str(video_output_dir),
+        str(audio_output_dir),
+    )
+
+async def generate_video_from_subtopics(payload: SubtopicRequest):
+    _validate_background_video()
+
+    if not payload.subtopic_transcripts:
+        raise HTTPException(status_code=400, detail="subtopic_transcripts cannot be empty.")
+
+    session_id = uuid4().hex
+    video_results = await _generate_videos(
+        [subtopic.model_dump() for subtopic in payload.subtopic_transcripts],
+        prefix="direct",
+    )
+
+    return {
+        "count": len(video_results),
+        "results": video_results,
+    }
+
 @app.post("/generate-video")
 async def generate_video(
     input_type: str = Form(..., description="audio|text|youtube"),
@@ -123,7 +152,12 @@ async def generate_video(
             transcript_source = content
             transcript_type = "youtube"
 
-        subtopics = await _run_blocking(extract_transcripts, transcript_source, transcript_type)
+        subtopics = await _run_blocking(
+            extract_transcripts,
+            transcript_source,
+            transcript_type,
+        )
+        
         if not subtopics:
             detail = {
                 "error": "model_returned_no_subtopics",
@@ -132,19 +166,9 @@ async def generate_video(
             }
             raise HTTPException(status_code=502, detail=detail)
 
-        _validate_background_video()
-
-        session_id = uuid4().hex
-        video_output_dir = OUTPUT_DIR / session_id
-        audio_output_dir = GENERATED_AUDIO_DIR / session_id
-        payload = [subtopic.model_dump() for subtopic in subtopics]
-
-        video_results = await _run_blocking(
-            generate_videos_from_subtopic_list,
-            payload,
-            str(BACKGROUND_VIDEO),
-            str(video_output_dir),
-            str(audio_output_dir),
+        video_results = await _generate_videos(
+            [subtopic.model_dump() for subtopic in subtopics],
+            prefix="session",
         )
 
         return {
@@ -154,29 +178,3 @@ async def generate_video(
     finally:
         if temp_audio_path and temp_audio_path.exists():
             temp_audio_path.unlink()
-
-
-@app.post("/generate-video/direct")
-async def generate_video_from_subtopics(payload: SubtopicRequest):
-    _validate_background_video()
-
-    if not payload.subtopic_transcripts:
-        raise HTTPException(status_code=400, detail="subtopic_transcripts cannot be empty.")
-
-    session_id = uuid4().hex
-    video_output_dir = OUTPUT_DIR / f"direct_{session_id}"
-    audio_output_dir = GENERATED_AUDIO_DIR / f"direct_{session_id}"
-
-    video_results = await _run_blocking(
-        generate_videos_from_subtopic_list,
-        [subtopic.model_dump() for subtopic in payload.subtopic_transcripts],
-        str(BACKGROUND_VIDEO),
-        str(video_output_dir),
-        str(audio_output_dir),
-    )
-
-    return {
-        "count": len(video_results),
-        "results": video_results,
-    }
-
