@@ -215,9 +215,9 @@ async def generate_video(
 
 
 
+
 def get_current_user_id() -> int:
     # TODO: replace with your real auth
-    # e.g., read from JWT/session/JWT claims
     return 1
 
 
@@ -228,7 +228,7 @@ async def list_user_videos(
 ):
     """
     Return up to 5 videos for the current user, starting at index `start`.
-    Each video includes only: id, title, description, presigned_url.
+    Each video includes a presigned_url usable by the frontend.
     """
     try:
         videos = await _run_blocking(
@@ -240,21 +240,11 @@ async def list_user_videos(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    # Strip down to the fields you actually want to expose
-    simplified = [
-        {
-            "id": v["id"],
-            "title": v["video_title"],
-            "description": v["video_description"],
-            "presigned_url": v["presigned_url"],
-        }
-        for v in videos
-    ]
-
+    # get_user_videos already returns: id, title, description, presigned_url
     return {
         "start": start,
-        "count": len(simplified),
-        "videos": simplified,
+        "count": len(videos),
+        "videos": videos,
     }
 
 
