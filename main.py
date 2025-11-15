@@ -1,4 +1,5 @@
 import asyncio
+import re
 from pathlib import Path
 from typing import List
 from uuid import uuid4
@@ -79,6 +80,18 @@ def _move_upload_to_disk(upload: UploadFile, destination: Path):
     upload.file.close()
 
 
+def _is_youtube_url(text: str) -> bool:
+    """Check if a string is a YouTube URL."""
+    if not text:
+        return False
+    youtube_patterns = [
+        r'(https?://)?(www\.)?(youtube\.com|youtu\.be)/',
+        r'youtube\.com/watch\?v=',
+        r'youtu\.be/',
+    ]
+    return any(re.search(pattern, text, re.IGNORECASE) for pattern in youtube_patterns)
+
+
 async def _generate_videos(user_id, subtopics, prefix: str):
     session_id = uuid4().hex
     video_output_dir = OUTPUT_DIR / f"{prefix}_{session_id}"
@@ -112,7 +125,7 @@ async def generate_video_from_subtopics(payload: SubtopicRequest, user_id: int =
 
 @app.post("/generate-video")
 async def generate_video(
-    input_type: str = Form(..., description="audio|text|youtube"),
+    input_type: str = Form("auto", description="audio|text|youtube|auto (auto-detects from content)"),
     user_id: int = Form(1, description="User ID for video ownership"),
     content: str | None = Form(
         None,
@@ -124,7 +137,7 @@ async def generate_video(
     ),
 ):
     input_type = input_type.lower()
-    supported = {"audio", "text", "youtube"}
+    supported = {"audio", "text", "youtube", "auto"}
     if input_type not in supported:
         raise HTTPException(
             status_code=400,
@@ -136,6 +149,20 @@ async def generate_video(
     transcript_type = None
 
     try:
+        # Auto-detect input type
+        if input_type == "auto":
+            if file:
+                input_type = "audio"
+            elif content and _is_youtube_url(content):
+                input_type = "youtube"
+            elif content:
+                input_type = "text"
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Unable to auto-detect input type. Please provide either a file or content."
+                )
+        
         if input_type == "audio":
             if not file:
                 raise HTTPException(status_code=400, detail="Audio file is required.")
