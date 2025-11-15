@@ -5,7 +5,7 @@ Generate one video per subtopic transcript chunk.
 Usage:
     python backend_pipeline/generate_subtopic_videos.py \
         --transcripts assets/subtopics.json \
-        --background assets/audio/videos/minecraft.mp4 \
+        --background assets/videos/minecraft.mp4 \
         --output-dir assets/output/subtopics
 """
 
@@ -142,7 +142,7 @@ def parse_args() -> argparse.Namespace:
         "--background",
         type=Path,
         required=True,
-        help="Background video path (e.g., assets/audio/videos/minecraft.mp4).",
+        help="Background video path (e.g., assets/videos/minecraft.mp4).",
     )
     parser.add_argument(
         "--output-dir",

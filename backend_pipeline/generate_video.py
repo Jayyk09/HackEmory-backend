@@ -149,7 +149,7 @@ def generate_multi_videos(
 if __name__ == "__main__":
     # Default paths
     TRANSCRIPT_JSON = os.environ.get("TRANSCRIPT_JSON", "assets/sample.json")
-    BACKGROUND_VIDEO = os.environ.get("BACKGROUND_VIDEO", "assets/audio/videos/minecraft.mp4")
+    BACKGROUND_VIDEO = os.environ.get("BACKGROUND_VIDEO", "assets/videos/minecraft.mp4")
     OUTPUT_VIDEO = os.environ.get("OUTPUT_VIDEO", "assets/output/final_video.mp4")
     
     # Check if files exist

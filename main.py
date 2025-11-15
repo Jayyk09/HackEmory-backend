@@ -11,7 +11,7 @@ from backend_pipeline.generate_subtopic_videos import (
     generate_videos_from_subtopic_list,
 )
 
-BACKGROUND_VIDEO = Path("assets/audio/videos/minecraft.mp4")
+BACKGROUND_VIDEO = Path("assets/videos/minecraft.mp4")
 OUTPUT_DIR = Path("assets/output")
 TEMP_UPLOAD_DIR = Path("tmp/uploads")
 GENERATED_AUDIO_DIR = Path("assets/audio/generated")
