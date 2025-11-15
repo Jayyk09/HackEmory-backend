@@ -5,7 +5,7 @@ from typing import Dict, Any, List
 
 import boto3
 
-from main import get_db_conn  # <-- shared DB connection
+from db import get_db_conn  # <-- shared DB connection
 
 BUCKET_NAME = "emory-hacks-video-bucket"
 

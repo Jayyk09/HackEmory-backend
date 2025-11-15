@@ -3,7 +3,7 @@
 from typing import Optional, Dict, List
 
 import psycopg2
-from main import get_db_conn  # <-- use shared DB helper
+from db import get_db_conn  # <-- use shared DB helper
 
 
 def create_user(email: str, password: str) -> Optional[Dict]:
