@@ -91,12 +91,16 @@ def generate_videos_from_subtopic_list(
             output_file=str(video_output),
         )
 
-        video_id = add_video(
-            user_id=user_id,
-            local_path=str(video_output),
-            title=subtopic["subtopic_title"],
-            description=f"Subtopic {index}/{len(subtopics)}",
-        )
+        # Upload video to S3 and save to database
+        # print("☁️  Uploading video to S3…")
+        with open(video_output, "rb") as video_file:
+            video_id = add_video(
+                user_id=user_id,
+                file_obj=video_file,
+                original_filename=video_output.name,
+                title=subtopic["subtopic_title"],
+                description=f"Subtopic {index}/{len(subtopics)}",
+            )
 
         results.append(
             {
