@@ -331,72 +331,71 @@ def _extract_subtopic_number(video: dict) -> int:
     return 999999
 
 
-def _sort_videos_by_collection(videos: List[dict]) -> List[dict]:
-    """
-    Sort videos by collection_id (newest first), then by creation time within collection (oldest first).
-    Videos without a collection are sorted to the end.
-    """
-    if not videos:
-        return videos
-    
-    # Separate videos with and without collections
-    with_collection = [v for v in videos if v.get('collection_id') is not None]
-    without_collection = [v for v in videos if v.get('collection_id') is None]
-    
-    # Group by collection_id
-    collections = {}
-    for video in with_collection:
-        coll_id = video['collection_id']
-        if coll_id not in collections:
-            collections[coll_id] = []
-        collections[coll_id].append(video)
-    
-    # Sort collections by the newest video in each collection (descending)
-    # Then sort videos within each collection by subtopic number (ascending)
-    sorted_videos = []
-    for coll_id in sorted(collections.keys(), reverse=True):
-        collection_videos = sorted(collections[coll_id], key=_extract_subtopic_number)
-        sorted_videos.extend(collection_videos)
-    
-    # Add videos without collections at the end
-    sorted_videos.extend(without_collection)
-    
-    return sorted_videos
-
-
 @app.get("/videos")
 async def list_user_videos(
-    start: int = Query(0, ge=0, description="Index into the user's video list"),
+    collection_offset: int = Query(0, ge=0, description="Number of collections to skip"),
+    collection_limit: int = Query(1, ge=1, le=10, description="Number of collections to return"),
     user_id: int = Depends(get_current_user_id),
 ):
     """
-    Return up to 5 videos for the current user, starting at index `start`.
-    Each video includes a presigned_url usable by the frontend.
-    Videos are grouped by collection (newest first), and within each collection by subtopic number (1→n).
+    Return videos grouped by collection for the current user.
+    Fetches complete collections at a time (not breaking them up).
+    
+    Query params:
+    - collection_offset: How many collections to skip (default 0)
+    - collection_limit: How many collections to return (default 1, max 10)
+    
+    Returns collections in order (newest first), with videos within each collection sorted by subtopic (1→n).
     """
     try:
-        # Fetch more videos than requested to ensure proper collection grouping
-        fetch_limit = max(20, start + 10)
-        all_videos = await _run_blocking(
-            get_user_videos,
+        # Step 1: Get the paginated collections (this is efficient - only metadata)
+        collections = await _run_blocking(
+            get_user_collections,
             user_id,
-            0,
-            fetch_limit,
+            collection_offset,
+            collection_limit,
         )
         
-        # Sort videos by collection
-        sorted_videos = _sort_videos_by_collection(all_videos)
+        # Get total count of collections for pagination info
+        all_collections = await _run_blocking(
+            get_user_collections,
+            user_id,
+            0,
+            1000,  # High limit to get count
+        )
+        total_collections = len(all_collections)
         
-        # Apply pagination after sorting
-        paginated_videos = sorted_videos[start:start + 5]
+        # Step 2: Fetch videos ONLY for these specific collections
+        result_videos = []
+        for collection in collections:
+            coll_id = collection["id"]
+            
+            # Fetch videos for this specific collection
+            collection_videos = await _run_blocking(
+                get_collection_videos,
+                coll_id,
+                0,
+                50,
+            )
+            
+            # Videos are already sorted by subtopic in get_collection_videos
+            result_videos.extend(collection_videos)
+        
+        # Sanitize videos (remove internal fields)
+        sanitized_videos = [
+            {k: v for k, v in video.items() if k not in ["s3_key", "created_at", "user_id"]}
+            for video in result_videos
+        ]
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
     return {
-        "start": start,
-        "count": len(paginated_videos),
-        "videos": paginated_videos,
+        "collection_offset": collection_offset,
+        "collection_limit": collection_limit,
+        "total_collections": total_collections,
+        "returned_video_count": len(sanitized_videos),
+        "videos": sanitized_videos,
     }
 
 
@@ -410,10 +409,10 @@ async def list_user_collections(
 ):
     """
     List all collections for the current user.
-    Returns collections ordered by newest first.
+    Returns ONLY: id and collection_title for each collection.
     """
     try:
-        collections = await _run_blocking(
+        raw_collections = await _run_blocking(
             get_user_collections,
             user_id,
             start,
@@ -421,10 +420,16 @@ async def list_user_collections(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
+
+    collections = [
+        {
+            "id": c["id"],
+            "title": c["collection_title"],
+        }
+        for c in raw_collections
+    ]
+
     return {
-        "start": start,
-        "count": len(collections),
         "collections": collections,
     }
 
@@ -443,18 +448,25 @@ async def get_collection_details(
         collection = await _run_blocking(get_collection, collection_id)
         if not collection:
             raise HTTPException(status_code=404, detail="Collection not found")
-        
+
         # Verify ownership
         if collection["user_id"] != user_id:
             raise HTTPException(status_code=403, detail="Not authorized to access this collection")
-        
+
         # Get all videos in the collection
         videos = await _run_blocking(get_collection_videos, collection_id)
-        
+
+        # Strip out any internal-only fields like s3_key
+        sanitized_videos = [
+            {k: v for k, v in video.items() if k != "s3_key" and k != "collection_id"}
+            for video in videos
+        ]
+
         return {
-            "collection": collection,
-            "video_count": len(videos),
-            "videos": videos,
+            "id": collection["id"],
+            "title": collection["collection_title"],
+            "video_count": len(sanitized_videos),
+            "videos": sanitized_videos,
         }
     except HTTPException:
         raise

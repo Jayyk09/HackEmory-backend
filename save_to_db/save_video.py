@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import uuid4
 import mimetypes
+import re
 from typing import BinaryIO, Dict, Any, List, Optional
 
 import boto3
@@ -186,11 +187,32 @@ def get_user_videos(
                 "title": title,
                 "description": desc,
                 "collection_id": coll_id,
+                "created_at": created_at,
                 "presigned_url": presigned_url,
             }
         )
 
     return videos
+
+
+def _extract_subtopic_number_from_video(video: Dict[str, Any]) -> int:
+    """Extract subtopic number from video description, otherwise return a high number."""
+    # Check description first for "Subtopic X/Y" pattern
+    description = video.get('description', '')
+    if description:
+        match = re.search(r'Subtopic\s*(\d+)/\d+', description, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    
+    # Check title for patterns like "subtopic_1", "subtopic 1", or numbers
+    title = video.get('title', '')
+    if title:
+        match = re.search(r'subtopic[_\s]?(\d+)', title, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    
+    # If no explicit subtopic, return a high number to sort to the end
+    return 999999
 
 
 def get_collection_videos(
@@ -202,8 +224,7 @@ def get_collection_videos(
     Get all videos in a collection.
     
     Returns:
-        List of video dicts with presigned URLs, ordered by created_at ASC (oldest first)
-        to preserve the subtopic order.
+        List of video dicts with presigned URLs, ordered by subtopic number (1→n)
     """
     conn = get_db_conn()
     try:
@@ -213,24 +234,23 @@ def get_collection_videos(
                 SELECT id, user_id, s3_key, video_title, video_description, collection_id, created_at
                 FROM videos
                 WHERE collection_id = %s
-                ORDER BY created_at ASC, id ASC
-                OFFSET %s
-                LIMIT %s;
+                ORDER BY created_at ASC, id ASC;
                 """,
-                (collection_id, offset, limit),
+                (collection_id,),
             )
             rows = cur.fetchall()
     finally:
         conn.close()
 
-    videos: List[Dict[str, Any]] = []
+    # Build video list with presigned URLs
+    all_videos: List[Dict[str, Any]] = []
     for vid_id, user_id, s3_key, title, desc, coll_id, created_at in rows:
         presigned_url = s3.generate_presigned_url(
             "get_object",
             Params={"Bucket": BUCKET_NAME, "Key": s3_key},
             ExpiresIn=3600,
         )
-        videos.append(
+        all_videos.append(
             {
                 "id": vid_id,
                 "user_id": user_id,
@@ -241,5 +261,14 @@ def get_collection_videos(
                 "presigned_url": presigned_url,
             }
         )
+    
+    # Sort by subtopic number (1→n)
+    sorted_videos = sorted(all_videos, key=_extract_subtopic_number_from_video)
+    
+    # Apply pagination after sorting
+    if limit and limit > 0:
+        paginated_videos = sorted_videos[offset:offset + limit]
+    else:
+        paginated_videos = sorted_videos[offset:]
 
-    return videos
+    return paginated_videos
