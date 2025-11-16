@@ -8,6 +8,7 @@ Complete video generation pipeline:
 
 import json
 import os
+import random
 import sys
 from pathlib import Path
 from uuid import uuid4
@@ -25,6 +26,30 @@ from backend_pipeline.video_assembly.ffMpeg import (
 from backend_pipeline.generate_subtopic_videos import (
     generate_videos_from_subtopic_list,
 )
+
+
+def get_random_background_video(videos_dir="assets/videos"):
+    """
+    Randomly select a background video from the videos directory.
+    Returns the path to the selected video.
+    """
+    videos_path = Path(videos_dir)
+    
+    if not videos_path.exists():
+        raise FileNotFoundError(f"Background videos directory not found at {videos_dir}")
+    
+    # Get all .mp4 files from the videos directory
+    video_files = list(videos_path.glob("*.mp4"))
+    
+    if not video_files:
+        raise FileNotFoundError(f"No background videos found in {videos_dir}")
+    
+    # Randomly select one video
+    selected_video = random.choice(video_files)
+    print(f"🎥 Selected background video: {selected_video.name}")
+    
+    return str(selected_video)
+
 
 def generate_complete_video(
     transcript_json_path,
@@ -149,7 +174,17 @@ def generate_multi_videos(
 if __name__ == "__main__":
     # Default paths
     TRANSCRIPT_JSON = os.environ.get("TRANSCRIPT_JSON", "assets/sample.json")
-    BACKGROUND_VIDEO = os.environ.get("BACKGROUND_VIDEO", "assets/videos/minecraft.mp4")
+    
+    # If BACKGROUND_VIDEO is not set, randomly select one
+    if "BACKGROUND_VIDEO" in os.environ:
+        BACKGROUND_VIDEO = os.environ.get("BACKGROUND_VIDEO")
+    else:
+        try:
+            BACKGROUND_VIDEO = get_random_background_video()
+        except FileNotFoundError as e:
+            print(f"❌ Error: {e}")
+            sys.exit(1)
+    
     OUTPUT_VIDEO = os.environ.get("OUTPUT_VIDEO", "assets/output/final_video.mp4")
     
     # Check if files exist

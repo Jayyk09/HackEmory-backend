@@ -1,4 +1,5 @@
 import asyncio
+import random
 import re
 from pathlib import Path
 from typing import List
@@ -15,7 +16,7 @@ from backend_pipeline.generate_subtopic_videos import (
 )
 import save_to_db.account_service as account_service
 
-BACKGROUND_VIDEO = Path("assets/videos/minecraft.mp4")
+BACKGROUND_VIDEOS_DIR = Path("assets/videos")
 OUTPUT_DIR = Path("assets/output")
 TEMP_UPLOAD_DIR = Path("tmp/uploads")
 GENERATED_AUDIO_DIR = Path("assets/audio/generated")
@@ -81,11 +82,46 @@ async def _run_blocking(func, *args, **kwargs):
     return await asyncio.to_thread(func, *args, **kwargs)
 
 
-def _validate_background_video():
-    if not BACKGROUND_VIDEO.exists():
+def _get_random_background_video() -> Path:
+    """
+    Randomly select a background video from the assets/videos directory.
+    Returns the path to the selected video.
+    """
+    if not BACKGROUND_VIDEOS_DIR.exists():
         raise HTTPException(
             status_code=500,
-            detail=f"Background video not found at {BACKGROUND_VIDEO}",
+            detail=f"Background videos directory not found at {BACKGROUND_VIDEOS_DIR}",
+        )
+    
+    # Get all .mp4 files from the videos directory
+    video_files = list(BACKGROUND_VIDEOS_DIR.glob("*.mp4"))
+    
+    if not video_files:
+        raise HTTPException(
+            status_code=500,
+            detail=f"No background videos found in {BACKGROUND_VIDEOS_DIR}",
+        )
+    
+    # Randomly select one video
+    selected_video = random.choice(video_files)
+    print(f"🎥 Selected background video: {selected_video.name}")
+    
+    return selected_video
+
+
+def _validate_background_video():
+    """Validate that the background videos directory exists and has videos."""
+    if not BACKGROUND_VIDEOS_DIR.exists():
+        raise HTTPException(
+            status_code=500,
+            detail=f"Background videos directory not found at {BACKGROUND_VIDEOS_DIR}",
+        )
+    
+    video_files = list(BACKGROUND_VIDEOS_DIR.glob("*.mp4"))
+    if not video_files:
+        raise HTTPException(
+            status_code=500,
+            detail=f"No background videos found in {BACKGROUND_VIDEOS_DIR}",
         )
 
 
@@ -115,10 +151,14 @@ async def _generate_videos(user_id, subtopics, prefix: str):
     session_id = uuid4().hex
     video_output_dir = OUTPUT_DIR / f"{prefix}_{session_id}"
     audio_output_dir = GENERATED_AUDIO_DIR / f"{prefix}_{session_id}"
+    
+    # Randomly select a background video for this session
+    background_video = _get_random_background_video()
+    
     return await _run_blocking(
         generate_videos_from_subtopic_list,
         subtopics,
-        str(BACKGROUND_VIDEO),
+        str(background_video),
         str(video_output_dir),
         str(audio_output_dir),
         user_id,
