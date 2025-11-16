@@ -173,7 +173,8 @@ def create_video_with_audio_and_captions(
     current_stream = "[bg]"
     input_index = 2  # 0=background, 1=audio, 2+=character images
     character_height = 480
-    margin = 10
+    peter_margin = 10
+    stewie_margin = 40
     
     # Scale all character images first
     character_scaled_streams = {}
@@ -200,7 +201,7 @@ def create_video_with_audio_and_captions(
             enable_expr = character_enables[key]
             filter_parts.append(
                 f"{current_stream}{character_scaled_streams[key]}"
-                f"overlay={margin}:H-h-{margin}:enable='{enable_expr}'[tmp_{overlay_count}]"
+                f"overlay={stewie_margin}:H-h-{stewie_margin}:enable='{enable_expr}'[tmp_{overlay_count}]"
             )
             current_stream = f"[tmp_{overlay_count}]"
             overlay_count += 1
@@ -211,7 +212,7 @@ def create_video_with_audio_and_captions(
             enable_expr = character_enables[key]
             filter_parts.append(
                 f"{current_stream}{character_scaled_streams[key]}"
-                f"overlay=W-w-{margin}:H-h-{margin}:enable='{enable_expr}'[tmp_{overlay_count}]"
+                f"overlay=W-w-{peter_margin}:H-h-{peter_margin}:enable='{enable_expr}'[tmp_{overlay_count}]"
             )
             current_stream = f"[tmp_{overlay_count}]"
             overlay_count += 1
