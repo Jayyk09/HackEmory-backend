@@ -1,7 +1,10 @@
 """Collection service for grouping related videos."""
 
+import os
 from typing import Optional, Dict, List
 from db import get_db_conn
+import google.genai as genai
+from dotenv import load_dotenv
 
 
 def create_collection(
@@ -111,7 +114,7 @@ def get_user_collections(
 
 def generate_collection_title(subtopic_titles: List[str]) -> str:
     """
-    Generate a collection title from subtopic titles.
+    Generate a collection title from subtopic titles using Gemini AI.
 
     Args:
         subtopic_titles: List of subtopic titles
@@ -126,9 +129,51 @@ def generate_collection_title(subtopic_titles: List[str]) -> str:
     if len(subtopic_titles) == 1:
         return subtopic_titles[0]
     
-    # If there are 2-3 subtopics, join them with " & "
+    try:
+        # Load API key
+        load_dotenv()
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY not set")
+        
+        # Initialize Gemini client
+        client = genai.Client(api_key=api_key)
+        
+        # Create prompt for title generation
+        subtopic_list = "\n".join([f"- {title}" for title in subtopic_titles])
+        prompt = f"""Generate a concise, engaging title (max 60 characters) for a video collection based on these subtopics:
+
+{subtopic_list}
+
+Requirements:
+- Must be 60 characters or less
+- Should capture the main theme or topic
+- Should be engaging and clear
+- Do not use quotes or special formatting
+- Return ONLY the title, nothing else
+
+Title:"""
+        
+        # Call Gemini API
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+        )
+        
+        # Extract the generated title
+        if response and response.text:
+            title = response.text.strip()
+            # Remove quotes if present
+            title = title.strip('"').strip("'")
+            # Truncate if too long
+            if len(title) > 60:
+                title = title[:57] + "..."
+            return title
+        
+    except Exception as e:
+        print(f"⚠️  Warning: Failed to generate title with Gemini: {e}")
+    
+    # Fallback to simple concatenation if Gemini fails
     if len(subtopic_titles) <= 3:
         return " & ".join(subtopic_titles)
-    
-    # If there are more than 3, use the first two and add "& More"
     return f"{subtopic_titles[0]} & {subtopic_titles[1]} & More"
