@@ -237,6 +237,75 @@ def get_current_user_id() -> int:
     return 1
 
 
+def _extract_subtopic_number(video: dict) -> int:
+    """Extract subtopic number from video title or description, otherwise return a high number."""
+    # Check description first for "Subtopic X/Y" pattern
+    description = video.get('description', '')
+    if description:
+        match = re.search(r'Subtopic\s*(\d+)/\d+', description, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    
+    # Check title for patterns like "subtopic_1", "subtopic 1", or numbers
+    title = video.get('title', '')
+    if title:
+        match = re.search(r'subtopic[_\s]?(\d+)', title, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    
+    # If no explicit subtopic, return a high number to sort to the end
+    return 999999
+
+
+def _sort_videos_by_session_and_subtopic(videos: List[dict]) -> List[dict]:
+    """
+    Sort videos so that within each session, they're ordered by subtopic number (1→n),
+    but sessions themselves remain in reverse chronological order (newest first).
+    """
+    if not videos:
+        return videos
+    
+    # Group videos into sessions based on timestamp proximity
+    # Videos created within 5 minutes of each other are considered part of the same session
+    sessions = []
+    current_session = []
+    
+    for video in videos:
+        if not current_session:
+            current_session.append(video)
+        else:
+            # Check if this video belongs to the current session
+            # If timestamps aren't available, we'll group by proximity in the list
+            # (videos from same session are returned consecutively by the DB)
+            prev_video = current_session[-1]
+            
+            # If both have subtopic numbers, check if they might be from same session
+            prev_num = _extract_subtopic_number(prev_video)
+            curr_num = _extract_subtopic_number(video)
+            
+            # If the current video has a smaller subtopic number, it's likely a new session
+            # (since DB returns newest first, descending order within sessions)
+            if curr_num < prev_num or (curr_num == 999999 and prev_num == 999999):
+                # Same session
+                current_session.append(video)
+            else:
+                # New session - save the old one and start a new one
+                sessions.append(current_session)
+                current_session = [video]
+    
+    # Don't forget the last session
+    if current_session:
+        sessions.append(current_session)
+    
+    # Sort each session by subtopic number (ascending)
+    sorted_videos = []
+    for session in sessions:
+        sorted_session = sorted(session, key=_extract_subtopic_number)
+        sorted_videos.extend(sorted_session)
+    
+    return sorted_videos
+
+
 @app.get("/videos")
 async def list_user_videos(
     start: int = Query(0, ge=0, description="Index into the user's video list"),
@@ -245,22 +314,32 @@ async def list_user_videos(
     """
     Return up to 5 videos for the current user, starting at index `start`.
     Each video includes a presigned_url usable by the frontend.
+    Videos are sorted by session (newest first), and within each session by subtopic number (1→n).
     """
     try:
-        videos = await _run_blocking(
+        # Fetch more videos than requested to ensure proper session grouping
+        fetch_limit = max(20, start + 10)
+        all_videos = await _run_blocking(
             get_user_videos,
             user_id,
-            start,
-            5,
+            0,
+            fetch_limit,
         )
+        
+        # Sort videos by session and subtopic
+        sorted_videos = _sort_videos_by_session_and_subtopic(all_videos)
+        
+        # Apply pagination after sorting
+        paginated_videos = sorted_videos[start:start + 5]
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
     # get_user_videos already returns: id, title, description, presigned_url
     return {
         "start": start,
-        "count": len(videos),
-        "videos": videos,
+        "count": len(paginated_videos),
+        "videos": paginated_videos,
     }
 
 
