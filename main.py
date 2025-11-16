@@ -152,13 +152,11 @@ async def _generate_videos(user_id, subtopics, prefix: str):
     video_output_dir = OUTPUT_DIR / f"{prefix}_{session_id}"
     audio_output_dir = GENERATED_AUDIO_DIR / f"{prefix}_{session_id}"
     
-    # Randomly select a background video for this session
-    background_video = _get_random_background_video()
-    
+    # Pass the videos directory so each subtopic can randomly select its own background
     return await _run_blocking(
         generate_videos_from_subtopic_list,
         subtopics,
-        str(background_video),
+        str(BACKGROUND_VIDEOS_DIR),
         str(video_output_dir),
         str(audio_output_dir),
         user_id,

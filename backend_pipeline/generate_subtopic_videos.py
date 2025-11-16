@@ -12,6 +12,7 @@ Usage:
 import argparse
 import json
 import os
+import random
 from pathlib import Path
 from typing import Any, Dict, List
 from save_to_db.save_video import add_video
@@ -28,6 +29,28 @@ from backend_pipeline.video_assembly.ffMpeg import (
 def slugify(value: str) -> str:
     safe = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in value.strip())
     return safe[:64] or "subtopic"
+
+
+def get_random_background_video(videos_dir: Path | str) -> Path:
+    """
+    Randomly select a background video from the videos directory.
+    Returns the path to the selected video.
+    """
+    videos_path = Path(videos_dir)
+    
+    if not videos_path.exists():
+        raise FileNotFoundError(f"Background videos directory not found at {videos_dir}")
+    
+    # Get all .mp4 files from the videos directory
+    video_files = list(videos_path.glob("*.mp4"))
+    
+    if not video_files:
+        raise FileNotFoundError(f"No background videos found in {videos_dir}")
+    
+    # Randomly select one video
+    selected_video = random.choice(video_files)
+    
+    return selected_video
 
 
 def load_subtopics(path: Path) -> List[Dict[str, Any]]:
@@ -49,7 +72,7 @@ def generate_videos_from_subtopic_list(
     audio_dir: Path | str,
     user_id: int,
 ) -> List[Dict[str, str]]:
-    background_video = Path(background_video)
+    background_video_path = Path(background_video)
     output_dir = Path(output_dir)
     audio_dir = Path(audio_dir)
 
@@ -59,8 +82,17 @@ def generate_videos_from_subtopic_list(
     output_dir.mkdir(parents=True, exist_ok=True)
     audio_dir.mkdir(parents=True, exist_ok=True)
 
+    # Determine if background_video is a directory or a single file
+    is_directory = background_video_path.is_dir()
+    
     results = []
     for index, subtopic in enumerate(subtopics, start=1):
+        # Select background video for this subtopic
+        if is_directory:
+            current_bg_video = get_random_background_video(background_video_path)
+            print(f"🎥 Selected background: {current_bg_video.name}")
+        else:
+            current_bg_video = background_video_path
         slug = slugify(subtopic["subtopic_title"])
         print(f"\n=== Subtopic {index}/{len(subtopics)}: {subtopic['subtopic_title']} ===")
 
@@ -85,7 +117,7 @@ def generate_videos_from_subtopic_list(
         video_output = output_dir / f"{slug}.mp4"
         print("🎥 Creating video…")
         video_path = create_video_with_audio_and_captions(
-            background_video=str(background_video),
+            background_video=str(current_bg_video),
             audio_file=audio_result["audio_file"],
             caption_timings=audio_result["timings"],
             output_file=str(video_output),
