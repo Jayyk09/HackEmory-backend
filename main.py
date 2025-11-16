@@ -15,7 +15,7 @@ from frontend_pipeline.script_generation.transcripts import extract_transcripts,
 from backend_pipeline.generate_subtopic_videos import (
     generate_videos_from_subtopic_list,
 )
-from backend_pipeline.generate_quiz_video import generate_quiz_video_from_file
+from backend_pipeline.generate_quiz_video import generate_quiz_video
 import save_to_db.account_service as account_service
 
 BACKGROUND_VIDEOS_DIR = Path("assets/videos")
@@ -168,12 +168,12 @@ async def _generate_quiz_videos(user_id, quiz_modules, prefix: str):
     
     # Pass the videos directory so each subtopic can randomly select its own background
     return await _run_blocking(
-        generate_quiz_video_from_file,
-        quiz_modules=quiz_modules,
-        background_video=str(BACKGROUND_VIDEOS_DIR),
-        output_dir=str(video_output_dir),
-        audio_dir=str(audio_output_dir),
-        user_id=user_id,
+        generate_quiz_video,
+        quiz_modules,
+        str(BACKGROUND_VIDEOS_DIR),
+        str(video_output_dir),
+        str(audio_output_dir),
+        user_id,
     )
 
 async def generate_video_from_subtopics(payload: SubtopicRequest, user_id: int = 1):
@@ -253,7 +253,7 @@ async def generate_video(
             transcript_source = content
             transcript_type = "youtube"
 
-        '''subtopics = await _run_blocking(
+        subtopics = await _run_blocking(
             extract_transcripts,
             transcript_source,
             transcript_type,
@@ -271,11 +271,13 @@ async def generate_video(
             user_id,
             [subtopic.model_dump() for subtopic in subtopics],
             prefix="session",
-        )'''
+        )
 
-        quiz_modules = await extract_quiz_transcripts(
+        # Generate quiz modules (wrap in _run_blocking since it's synchronous)
+        quiz_modules = await _run_blocking(
+            extract_quiz_transcripts,
             transcript_source,
-            transcript_type
+            transcript_type,
         )
 
         if not quiz_modules:
@@ -292,11 +294,12 @@ async def generate_video(
             prefix="quiz_session",
         )
 
-        collection_num = find_last_collection(user_id)
+        # Get the last collection ID (wrap in _run_blocking)
+        collection_num = await _run_blocking(find_last_collection, user_id)
 
         return {
-            "count": len(video_results),
-            "results": video_results,
+            "quiz_video": quiz_results,
+            "collection_id": collection_num,
         }
     finally:
         if temp_audio_path and temp_audio_path.exists():

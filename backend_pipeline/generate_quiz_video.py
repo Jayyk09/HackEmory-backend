@@ -93,7 +93,7 @@ def convert_quiz_to_transcript_format(quiz_modules: List[Dict[str, Any]]) -> Dic
             transcripts.append({
                 "caption": script["ask"],
                 "speaker": "PETER",
-                "emotion": "neutral"
+                "emotion": "teaching"
             })
             
             # For multiple choice questions, display options during pause
@@ -106,7 +106,7 @@ def convert_quiz_to_transcript_format(quiz_modules: List[Dict[str, Any]]) -> Dic
                 transcripts.append({
                     "caption": options_text,
                     "speaker": "PETER",
-                    "emotion": "neutral",
+                    "emotion": "teaching",
                     "is_options": True  # Flag to identify this as options display
                 })
             else:
@@ -114,7 +114,7 @@ def convert_quiz_to_transcript_format(quiz_modules: List[Dict[str, Any]]) -> Dic
                 transcripts.append({
                     "caption": "[Pause to think...]",
                     "speaker": "PETER",
-                    "emotion": "neutral"
+                    "emotion": "teaching"
                 })
             
             # Add the "reveal" script
