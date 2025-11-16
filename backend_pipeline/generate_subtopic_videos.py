@@ -91,14 +91,12 @@ def generate_videos_from_subtopic_list(
             output_file=str(video_output),
         )
 
-        with video_output.open("rb") as f:
-            video_id = add_video(
-                user_id=user_id,
-                file_obj=f,
-                original_filename=video_output.name,
-                title=subtopic["subtopic_title"],
-                description=f"Subtopic {index}/{len(subtopics)}",
-            )
+        video_id = add_video(
+            user_id=user_id,
+            local_path=str(video_output),
+            title=subtopic["subtopic_title"],
+            description=f"Subtopic {index}/{len(subtopics)}",
+        )
 
         results.append(
             {

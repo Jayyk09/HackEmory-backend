@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: emory_hacks_user
       POSTGRES_PASSWORD: devpassword
     ports:
-      - "5432:5432"
+      - "3001:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
