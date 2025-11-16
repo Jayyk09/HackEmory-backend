@@ -295,11 +295,14 @@ async def generate_video(
         )
 
         # Get the last collection ID (wrap in _run_blocking)
-        collection_num = await _run_blocking(find_last_collection, user_id)
+        collection_dict = await _run_blocking(find_last_collection, user_id)
+        collection_id = collection_dict["id"] if collection_dict else None
 
         return {
+            "count": len(video_results),
+            "results": video_results,
             "quiz_video": quiz_results,
-            "collection_id": collection_num,
+            "collection_id": collection_id,
         }
     finally:
         if temp_audio_path and temp_audio_path.exists():

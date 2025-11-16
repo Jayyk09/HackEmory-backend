@@ -222,7 +222,9 @@ def generate_quiz_video(
     
     description = f"Test your knowledge with {sum(len(m['questions']) for m in quiz_modules)} questions"
     
-    collection_id = find_last_collection(user_id)
+    # Get the last collection ID (returns dict with 'id' or None)
+    collection_dict = find_last_collection(user_id)
+    collection_id = collection_dict["id"] if collection_dict else None
 
     # Open video file and upload
     with open(video_output_path, "rb") as video_file:
@@ -232,7 +234,7 @@ def generate_quiz_video(
             original_filename=video_output_path.name,
             title=quiz_title,
             description=description,
-            collection_id=collection_id,  # Quiz videos are standalone
+            collection_id=collection_id,  # Link to the last collection
         )
     
     # Generate S3 key (matches the pattern used in upload_video_to_s3)
