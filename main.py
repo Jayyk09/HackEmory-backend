@@ -376,10 +376,10 @@ async def list_user_collections(
 ):
     """
     List all collections for the current user.
-    Returns collections ordered by newest first.
+    Returns ONLY: id and collection_title for each collection.
     """
     try:
-        collections = await _run_blocking(
+        raw_collections = await _run_blocking(
             get_user_collections,
             user_id,
             start,
@@ -387,10 +387,16 @@ async def list_user_collections(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
+
+    collections = [
+        {
+            "id": c["id"],
+            "title": c["collection_title"],
+        }
+        for c in raw_collections
+    ]
+
     return {
-        "start": start,
-        "count": len(collections),
         "collections": collections,
     }
 
@@ -409,18 +415,25 @@ async def get_collection_details(
         collection = await _run_blocking(get_collection, collection_id)
         if not collection:
             raise HTTPException(status_code=404, detail="Collection not found")
-        
+
         # Verify ownership
         if collection["user_id"] != user_id:
             raise HTTPException(status_code=403, detail="Not authorized to access this collection")
-        
+
         # Get all videos in the collection
         videos = await _run_blocking(get_collection_videos, collection_id)
-        
+
+        # Strip out any internal-only fields like s3_key
+        sanitized_videos = [
+            {k: v for k, v in video.items() if k != "s3_key" and k != "collection_id"}
+            for video in videos
+        ]
+
         return {
-            "collection": collection,
-            "video_count": len(videos),
-            "videos": videos,
+            "id": collection["id"],
+            "title": collection["collection_title"],
+            "video_count": len(sanitized_videos),
+            "videos": sanitized_videos,
         }
     except HTTPException:
         raise
