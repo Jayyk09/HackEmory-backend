@@ -2,6 +2,9 @@ import base64
 import os
 import json
 from typing import Any, List
+from pathlib import Path
+
+import http.client
 
 import dotenv
 import google.genai as genai
@@ -45,7 +48,6 @@ def _ensure_text(data):
         return data.decode("utf-8")
     return str(data)
 
-
 def _extend_from_payload(payload: Any, subtopics: List[SubtopicDialogue]) -> bool:
     try:
         model = TranscriptResponse.model_validate(payload)
@@ -65,6 +67,82 @@ def _extend_from_quiz_payload(payload: Any, quiz_modules: List[QuizModule]) -> b
     quiz_modules.extend(model.quiz_modules)
     return True
 
+def extract_audio_from_youtube(url):
+    """
+    Extract audio from YouTube URL using RapidAPI yt-downloader9.
+    
+    Returns:
+        Audio file bytes
+    """
+    import time
+    
+    dotenv.load_dotenv()
+    api_key = os.getenv("RapidAPI_Key")
+    if not api_key:
+        raise ValueError("RapidAPI_Key not set")
+    
+    conn = http.client.HTTPSConnection("yt-downloader9.p.rapidapi.com")
+    
+    headers = {
+        'x-rapidapi-key': api_key,
+        'x-rapidapi-host': "yt-downloader9.p.rapidapi.com",
+        'Content-Type': "application/json"
+    }
+    
+    # Step 1: Start download
+    payload = json.dumps({
+        "urls": [url],
+        "onlyAudio": True,
+        "ignorePlaylists": True,
+        "videoQuality": "hd"
+    })
+    
+    conn.request("POST", "/start", payload, headers)
+    res = conn.getresponse()
+    data = res.read()
+    start_response = json.loads(data.decode("utf-8"))
+    
+    if "uid" not in start_response:
+        raise ValueError(f"Failed to start download: {start_response}")
+    
+    uid = start_response["uid"]
+    print(f"Download started with UID: {uid}")
+    
+    # Step 2: Poll for status until READY or DONE
+    max_retries = 60  # 5 minutes max (5 second intervals)
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        time.sleep(5)  # Wait 5 seconds between checks
+        
+        conn = http.client.HTTPSConnection("yt-downloader9.p.rapidapi.com")
+        conn.request("GET", f"/status/{uid}", headers=headers)
+        res = conn.getresponse()
+        data = res.read()
+        status_response = json.loads(data.decode("utf-8"))
+        
+        status = status_response.get("status")
+        print(f"Status: {status}")
+        
+        if status == "READY" or status == "DONE":
+            target_file = status_response.get("targetFile")
+            print(f"Download ready: {target_file}")
+            
+            # Step 3: Download the file and return bytes
+            conn = http.client.HTTPSConnection("yt-downloader9.p.rapidapi.com")
+            conn.request("GET", f"/download/{uid}", headers=headers)
+            res = conn.getresponse()
+            audio_bytes = res.read()
+            
+            print(f"Audio downloaded: {len(audio_bytes)} bytes")
+            return audio_bytes
+        
+        elif status == "YOUTUBE-ERROR" or status == "CANCELED":
+            raise ValueError(f"Download failed with status: {status}")
+        
+        retry_count += 1
+    
+    raise TimeoutError(f"Download timed out after {max_retries * 5} seconds")
 
 def extract_transcripts(file, file_type):
     dotenv.load_dotenv()
@@ -114,11 +192,14 @@ def extract_transcripts(file, file_type):
         ]
     elif file_type == "youtube":
         youtube_url = _ensure_text(file)
+        # Extract audio from YouTube and encode as base64
+        audio_bytes = extract_audio_from_youtube(youtube_url)
+        audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
         contents = [
             types.Content(
                 role="user",
                 parts=[
-                    types.Part.from_text(text=youtube_url),
+                    types.Part(inline_data=types.Blob(data=audio_b64, mime_type="audio/mp3")),
                 ],
             ),
         ]
@@ -263,11 +344,14 @@ def extract_quiz_transcripts(file, file_type):
         ]
     elif file_type == "youtube":
         youtube_url = _ensure_text(file)
+        # Extract audio from YouTube and encode as base64
+        audio_bytes = extract_audio_from_youtube(youtube_url)
+        audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
         contents = [
             types.Content(
                 role="user",
                 parts=[
-                    types.Part.from_text(text=youtube_url),
+                    types.Part(inline_data=types.Blob(data=audio_b64, mime_type="audio/mp3")),
                 ],
             ),
         ]
@@ -361,8 +445,8 @@ def extract_quiz_transcripts(file, file_type):
     return quiz_modules
 
 if __name__ == "__main__":
-    file = "C:\\Users\\Chris\\Downloads\\The essence of calculus.mp3"
-    file_type = "audio/mp3"
+    file = "https://youtu.be/2vbSBrvetWc?si=ZEUYlGBNa1K3-9BW"
+    file_type = "youtube"
     transcripts = extract_quiz_transcripts(file, file_type)
     for subtopic in transcripts:
         print(subtopic.model_dump())
