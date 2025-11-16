@@ -253,7 +253,7 @@ async def generate_video(
             transcript_source = content
             transcript_type = "youtube"
 
-        subtopics = await _run_blocking(
+        '''subtopics = await _run_blocking(
             extract_transcripts,
             transcript_source,
             transcript_type,
@@ -271,12 +271,11 @@ async def generate_video(
             user_id,
             [subtopic.model_dump() for subtopic in subtopics],
             prefix="session",
-        )
+        )'''
 
-        quiz_modules = await _run_blocking(
-            extract_quiz_transcripts,
+        quiz_modules = await extract_quiz_transcripts(
             transcript_source,
-            transcript_type,
+            transcript_type
         )
 
         if not quiz_modules:
