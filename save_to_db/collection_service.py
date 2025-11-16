@@ -132,3 +132,35 @@ def generate_collection_title(subtopic_titles: List[str]) -> str:
     
     # If there are more than 3, use the first two and add "& More"
     return f"{subtopic_titles[0]} & {subtopic_titles[1]} & More"
+
+def find_last_collection(user_id: int) -> Optional[Dict]:
+    """
+    Find the most recent collection for a user.
+
+    Args:
+        user_id: The user ID
+
+    Returns:
+        The most recent collection dict or None
+    """
+    conn = get_db_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id
+                FROM collections
+                WHERE user_id = %s
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+                """,
+                (user_id,),
+            )
+            row = cur.fetchone()
+            if row:
+                return {
+                    "id": row[0]
+                }
+            return None
+    finally:
+        conn.close()

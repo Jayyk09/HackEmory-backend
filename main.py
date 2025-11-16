@@ -8,13 +8,14 @@ from uuid import uuid4
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Query
 
 from save_to_db.save_video import get_user_videos, get_collection_videos
-from save_to_db.collection_service import get_collection, get_user_collections
+from save_to_db.collection_service import get_collection, get_user_collections, find_last_collection
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from frontend_pipeline.script_generation.transcripts import extract_transcripts
+from frontend_pipeline.script_generation.transcripts import extract_transcripts, extract_quiz_transcripts
 from backend_pipeline.generate_subtopic_videos import (
     generate_videos_from_subtopic_list,
 )
+from backend_pipeline.generate_quiz_video import generate_quiz_video_from_file
 import save_to_db.account_service as account_service
 
 BACKGROUND_VIDEOS_DIR = Path("assets/videos")
@@ -41,6 +42,28 @@ class SubtopicRequest(BaseModel):
     subtopic_transcripts: List[SubtopicPayload]
 
 
+class QuizScript(BaseModel):
+    ask: str
+    reveal: str
+
+
+class QuizQuestion(BaseModel):
+    question_number: int
+    type: str
+    question_text: str
+    options: List[str]
+    correct_answer: str
+    script: QuizScript
+
+
+class QuizModule(BaseModel):
+    subtopic_title: str
+    questions: List[QuizQuestion]
+
+
+class QuizRequest(BaseModel):
+    user_id: int
+    quiz_modules: List[QuizModule]
 
 
 app = FastAPI(
@@ -136,6 +159,21 @@ async def _generate_videos(user_id, subtopics, prefix: str):
         str(video_output_dir),
         str(audio_output_dir),
         user_id,
+    )
+
+async def _generate_quiz_videos(user_id, quiz_modules, prefix: str):
+    session_id = uuid4().hex
+    video_output_dir = OUTPUT_DIR / f"{prefix}_{session_id}"
+    audio_output_dir = GENERATED_AUDIO_DIR / f"{prefix}_{session_id}"
+    
+    # Pass the videos directory so each subtopic can randomly select its own background
+    return await _run_blocking(
+        generate_quiz_video_from_file,
+        quiz_modules=quiz_modules,
+        background_video=str(BACKGROUND_VIDEOS_DIR),
+        output_dir=str(video_output_dir),
+        audio_dir=str(audio_output_dir),
+        user_id=user_id,
     )
 
 async def generate_video_from_subtopics(payload: SubtopicRequest, user_id: int = 1):
@@ -234,6 +272,28 @@ async def generate_video(
             [subtopic.model_dump() for subtopic in subtopics],
             prefix="session",
         )
+
+        quiz_modules = await _run_blocking(
+            extract_quiz_transcripts,
+            transcript_source,
+            transcript_type,
+        )
+
+        if not quiz_modules:
+            detail = {
+                "error": "model_returned_no_quiz_modules",
+                "input_type": input_type,
+                "content_preview": (transcript_source or "")[:280],
+            }
+            raise HTTPException(status_code=502, detail=detail)
+        
+        quiz_results = await _generate_quiz_videos(
+            user_id,
+            [quiz_module.model_dump() for quiz_module in quiz_modules],
+            prefix="quiz_session",
+        )
+
+        collection_num = find_last_collection(user_id)
 
         return {
             "count": len(video_results),
