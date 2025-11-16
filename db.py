@@ -1,18 +1,22 @@
+# db.py
 import os
-from pathlib import Path
+from typing import Optional
 
-import psycopg2
 from dotenv import load_dotenv
+import psycopg2
+from psycopg2.extensions import connection as PGConnection
 
-# Load .env from project root
-BASE_DIR = Path(__file__).resolve().parent
-load_dotenv(BASE_DIR / ".env")
+load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL: Optional[str] = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL not set in environment/.env")
+    raise RuntimeError("DATABASE_URL environment variable is not set")
 
-
-def get_db_conn():
-    """Get a new database connection using DATABASE_URL."""
-    return psycopg2.connect(DATABASE_URL)
+def get_db_conn() -> PGConnection:
+    """
+    Return a psycopg2 connection to the Neon Postgres DB.
+    Uses DATABASE_URL env var.
+    """
+    # psycopg2 understands a full postgres:// URL DSN
+    conn = psycopg2.connect(DATABASE_URL)
+    return conn
