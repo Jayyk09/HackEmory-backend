@@ -34,11 +34,12 @@ def generate_audio_from_transcript(transcript_data, output_dir="assets/audio/seg
     for idx, segment in enumerate(transcript_data["transcripts"]):
         caption = segment["caption"]
         speaker = segment["speaker"]
+        emotion = segment.get("emotion", "neutral")  # Default to neutral if not provided
         
         # Get voice ID for speaker
         voice_id = VOICE_MAP.get(speaker, VOICE_MAP["PETER"])
         
-        print(f"🎙️  Generating audio {idx+1}/{len(transcript_data['transcripts'])}: {speaker}")
+        print(f"🎙️  Generating audio {idx+1}/{len(transcript_data['transcripts'])}: {speaker} ({emotion})")
         
         # Generate audio
         audio = client.text_to_speech.convert(
@@ -58,7 +59,8 @@ def generate_audio_from_transcript(transcript_data, output_dir="assets/audio/seg
             "index": idx,
             "file": output_file,
             "caption": caption,
-            "speaker": speaker
+            "speaker": speaker,
+            "emotion": emotion
         })
         
         print(f"   ✅ Saved: {output_file}")
@@ -142,7 +144,8 @@ def concatenate_audio_segments(audio_segments, output_file="assets/audio/full_au
             "end": current_time + duration,
             "duration": duration,
             "caption": segment["caption"],
-            "speaker": segment["speaker"]
+            "speaker": segment["speaker"],
+            "emotion": segment.get("emotion", "neutral")
         })
         
         current_time += duration

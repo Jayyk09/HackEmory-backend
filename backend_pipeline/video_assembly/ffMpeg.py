@@ -9,14 +9,35 @@ def wrap_caption_text(text, max_chars=32):
     return "\n".join(wrapped_lines) if wrapped_lines else text
 
 
+def get_character_image(speaker, emotion):
+    """
+    Get the character image path based on speaker and emotion.
+    
+    Args:
+        speaker: "PETER" or "STEWIE"
+        emotion: "neutral", "angry", "excited", or "confused"
+    
+    Returns:
+        Path to the character image file
+    """
+    base_path = "assets/characters"
+    speaker_lower = speaker.lower()
+    
+    # Map emotion to image file
+    if emotion == "neutral" or not emotion:
+        return f"{base_path}/{speaker_lower}.png"
+    else:
+        return f"{base_path}/{speaker_lower}_{emotion}.png"
+
+
 def create_video_with_audio_and_captions(
     background_video,
     audio_file,
     caption_timings,
     output_file="assets/output/final_video.mp4",
     video_size=(1080, 1920),  # Portrait 9:16 for TikTok/Reels
-    peter_image="assets/characters/peter.png",
-    stewie_image="assets/characters/stewie.png"
+    peter_image=None,  # Deprecated, kept for backward compatibility
+    stewie_image=None  # Deprecated, kept for backward compatibility
 ):
     """
     Create a video with looping background, audio, caption overlays, and character images.
@@ -24,11 +45,11 @@ def create_video_with_audio_and_captions(
     Args:
         background_video: Path to background video (minecraft.mp4)
         audio_file: Path to audio file
-        caption_timings: List of timing dictionaries with start, end, caption, speaker
+        caption_timings: List of timing dictionaries with start, end, caption, speaker, emotion
         output_file: Output video file path
         video_size: Tuple of (width, height) for output video
-        peter_image: Path to Peter character image
-        stewie_image: Path to Stewie character image
+        peter_image: Deprecated - images now selected based on emotion
+        stewie_image: Deprecated - images now selected based on emotion
     
     Returns:
         Path to output video
@@ -39,14 +60,26 @@ def create_video_with_audio_and_captions(
     if not os.path.exists(audio_file):
         raise FileNotFoundError(f"Audio file not found: {audio_file}")
     
-    # Check if character images exist
-    if not os.path.exists(peter_image):
-        print(f"⚠️  Warning: Peter image not found: {peter_image}")
-        peter_image = None
-    
-    if not os.path.exists(stewie_image):
-        print(f"⚠️  Warning: Stewie image not found: {stewie_image}")
-        stewie_image = None
+    # Build a list of unique character images needed for this video
+    character_images = {}  # {(speaker, emotion): image_path}
+    for timing in caption_timings:
+        speaker = timing["speaker"]
+        emotion = timing.get("emotion", "neutral")
+        key = (speaker, emotion)
+        
+        if key not in character_images:
+            image_path = get_character_image(speaker, emotion)
+            if os.path.exists(image_path):
+                character_images[key] = image_path
+            else:
+                # Fallback to neutral if emotion image doesn't exist
+                fallback_path = get_character_image(speaker, "neutral")
+                if os.path.exists(fallback_path):
+                    print(f"⚠️  Warning: {image_path} not found, using neutral")
+                    character_images[key] = fallback_path
+                else:
+                    print(f"⚠️  Warning: Character image not found: {image_path}")
+                    character_images[key] = None
     
     # Get audio duration
     duration_cmd = [
@@ -70,20 +103,24 @@ def create_video_with_audio_and_captions(
     audio_duration = float(result.stdout.strip())
     
     print(f"🎬 Creating video with duration: {audio_duration:.2f}s")
+    print(f"🎭 Character emotions: {list(character_images.keys())}")
     
-    # Group timings by speaker for character overlay enable expressions
-    peter_timings = [t for t in caption_timings if t["speaker"] == "PETER"]
-    stewie_timings = [t for t in caption_timings if t["speaker"] == "STEWIE"]
-    
-    # Create enable expressions for each character
+    # Group timings by (speaker, emotion) for character overlay enable expressions
     def create_enable_expr(timings):
         if not timings:
             return "0"  # Never show
         conditions = [f"between(t,{t['start']},{t['end']})" for t in timings]
         return "+".join(conditions)
     
-    peter_enable = create_enable_expr(peter_timings)
-    stewie_enable = create_enable_expr(stewie_timings)
+    # Create enable expressions for each character-emotion combination
+    character_enables = {}
+    for key in character_images.keys():
+        speaker, emotion = key
+        matching_timings = [
+            t for t in caption_timings 
+            if t["speaker"] == speaker and t.get("emotion", "neutral") == emotion
+        ]
+        character_enables[key] = create_enable_expr(matching_timings)
     
     # Build ffmpeg filter for captions
     caption_filters = []
@@ -138,42 +175,46 @@ def create_video_with_audio_and_captions(
     character_height = 480
     margin = 10
     
-    # --- FIX 3: Ensure Peter is always input_index 2, Stewie always input_index 3 (or next available) ---
-    # This prevents speaker switching based on the order of if statements.
-    # We now map the inputs correctly and then use the correct overlay index.
+    # Scale all character images first
+    character_scaled_streams = {}
+    for key, image_path in character_images.items():
+        if image_path:
+            speaker, emotion = key
+            stream_name = f"{speaker.lower()}_{emotion}_scaled"
+            filter_parts.append(
+                f"[{input_index}:v]scale=-1:{character_height}[{stream_name}]"
+            )
+            character_scaled_streams[key] = f"[{stream_name}]"
+            input_index += 1
     
-    # Prepare character images as separate streams FIRST
-    peter_stream_name = ""
-    stewie_stream_name = ""
-
-    if peter_image:
-        filter_parts.append(
-            f"[{input_index}:v]scale=-1:{character_height}[peter_scaled]"
-        )
-        peter_stream_name = f"[peter_scaled]"
-        input_index += 1
-
-    if stewie_image:
-        filter_parts.append(
-            f"[{input_index}:v]scale=-1:{character_height}[stewie_scaled]"
-        )
-        stewie_stream_name = f"[stewie_scaled]"
-        input_index += 1
+    # Overlay characters in order: Stewie on left, Peter on right
+    # Group by speaker to maintain consistent positioning
+    stewie_keys = [k for k in character_images.keys() if k[0] == "STEWIE"]
+    peter_keys = [k for k in character_images.keys() if k[0] == "PETER"]
     
-    # Overlay Peter on bottom left
-    # Overlay Stewie on bottom left
-    if stewie_image:
-        filter_parts.append(
-            f"{current_stream}{stewie_stream_name}overlay={margin}:H-h-{margin}:enable='{stewie_enable}'[tmp_stewie]"
-        )
-        current_stream = "[tmp_stewie]"
-
-    # Overlay Peter on bottom right
-    if peter_image:
-        filter_parts.append(
-            f"{current_stream}{peter_stream_name}overlay=W-w-{margin}:H-h-{margin}:enable='{peter_enable}'[tmp_peter]"
-        )
-        current_stream = "[tmp_peter]"
+    overlay_count = 0
+    
+    # Overlay all Stewie emotions on bottom left
+    for key in stewie_keys:
+        if key in character_scaled_streams and character_images[key]:
+            enable_expr = character_enables[key]
+            filter_parts.append(
+                f"{current_stream}{character_scaled_streams[key]}"
+                f"overlay={margin}:H-h-{margin}:enable='{enable_expr}'[tmp_{overlay_count}]"
+            )
+            current_stream = f"[tmp_{overlay_count}]"
+            overlay_count += 1
+    
+    # Overlay all Peter emotions on bottom right
+    for key in peter_keys:
+        if key in character_scaled_streams and character_images[key]:
+            enable_expr = character_enables[key]
+            filter_parts.append(
+                f"{current_stream}{character_scaled_streams[key]}"
+                f"overlay=W-w-{margin}:H-h-{margin}:enable='{enable_expr}'[tmp_{overlay_count}]"
+            )
+            current_stream = f"[tmp_{overlay_count}]"
+            overlay_count += 1
     
     # Add captions on top
     if all_captions:
@@ -193,12 +234,11 @@ def create_video_with_audio_and_captions(
         "-i", audio_file,
     ]
     
-    # Add character image inputs based on whether they exist
-    # The order here defines their input_index (e.g., -i peter.png is input 2, -i stewie.png is input 3)
-    if peter_image:
-        cmd.extend(["-loop", "1", "-i", peter_image])
-    if stewie_image:
-        cmd.extend(["-loop", "1", "-i", stewie_image])
+    # Add all character image inputs in the same order as we used them in filter_parts
+    # The order here must match the order in which we created the scaled streams
+    for key, image_path in character_images.items():
+        if image_path:
+            cmd.extend(["-loop", "1", "-i", image_path])
     
     # Add filter complex and output settings
     cmd.extend([
