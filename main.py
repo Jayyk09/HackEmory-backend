@@ -273,7 +273,8 @@ def _extract_subtopic_number(video: dict) -> int:
 
 def _sort_videos_by_collection(videos: List[dict]) -> List[dict]:
     """
-    Sort videos by collection_id (newest first), then by creation time within collection (oldest first).
+    Sort videos by collection (newest collection first), then by subtopic number within each collection (1→n).
+    Collections are ordered by their newest video's creation time.
     Videos without a collection are sorted to the end.
     """
     if not videos:
@@ -283,18 +284,43 @@ def _sort_videos_by_collection(videos: List[dict]) -> List[dict]:
     with_collection = [v for v in videos if v.get('collection_id') is not None]
     without_collection = [v for v in videos if v.get('collection_id') is None]
     
-    # Group by collection_id
+    # Group by collection_id and track the max created_at for each collection
     collections = {}
+    collection_max_time = {}
+    
     for video in with_collection:
         coll_id = video['collection_id']
+        created_at = video.get('created_at')
+        
         if coll_id not in collections:
             collections[coll_id] = []
+            collection_max_time[coll_id] = created_at
+        else:
+            # Update max time if this video is newer
+            # Handle both datetime objects and strings
+            current_max = collection_max_time[coll_id]
+            if created_at and current_max:
+                # Convert to string for comparison if needed
+                created_str = str(created_at) if created_at else ''
+                max_str = str(current_max) if current_max else ''
+                if created_str > max_str:
+                    collection_max_time[coll_id] = created_at
+            elif created_at and not current_max:
+                collection_max_time[coll_id] = created_at
+                
         collections[coll_id].append(video)
     
-    # Sort collections by the newest video in each collection (descending)
-    # Then sort videos within each collection by subtopic number (ascending)
+    # Sort collection IDs by their max creation time (newest first)
+    # Use string representation for consistent sorting
+    sorted_collection_ids = sorted(
+        collections.keys(), 
+        key=lambda cid: str(collection_max_time.get(cid, '')) if collection_max_time.get(cid) else '', 
+        reverse=True
+    )
+    
+    # Build final list: collections ordered by newest first, videos within each collection by subtopic (1→n)
     sorted_videos = []
-    for coll_id in sorted(collections.keys(), reverse=True):
+    for coll_id in sorted_collection_ids:
         collection_videos = sorted(collections[coll_id], key=_extract_subtopic_number)
         sorted_videos.extend(collection_videos)
     
@@ -315,16 +341,16 @@ async def list_user_videos(
     Videos are grouped by collection (newest first), and within each collection by subtopic number (1→n).
     """
     try:
-        # Fetch more videos than requested to ensure proper collection grouping
-        fetch_limit = max(20, start + 10)
+        # Fetch ALL videos to ensure proper sorting across all collections
+        # We use a high limit (1000) to get all videos
         all_videos = await _run_blocking(
             get_user_videos,
             user_id,
             0,
-            fetch_limit,
+            1000,  # High limit to fetch all videos
         )
         
-        # Sort videos by collection
+        # Sort videos by collection (newest first) and subtopic (1→n within collection)
         sorted_videos = _sort_videos_by_collection(all_videos)
         
         # Apply pagination after sorting

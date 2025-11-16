@@ -187,6 +187,7 @@ def get_user_videos(
                 "title": title,
                 "description": desc,
                 "collection_id": coll_id,
+                "created_at": created_at,
                 "presigned_url": presigned_url,
             }
         )
