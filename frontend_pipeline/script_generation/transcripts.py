@@ -15,11 +15,9 @@ try:
     from frontend_pipeline.script_generation.prompts import (
         AUDIO_PROMPT,
         TEXT_PROMPT,
-        YOUTUBE_PROMPT,
         PPTX_PROMPT,
         AUDIO_QUIZ_PROMPT,
         TEXT_QUIZ_PROMPT,
-        YOUTUBE_QUIZ_PROMPT,
         PPTX_QUIZ_PROMPT,
     )
     from frontend_pipeline.script_generation.models import (
@@ -32,8 +30,10 @@ except ImportError:  # pragma: no cover - fallback when run as script
     from script_generation.prompts import (  # type: ignore
         AUDIO_PROMPT,
         TEXT_PROMPT,
-        YOUTUBE_PROMPT,
         PPTX_PROMPT,
+        AUDIO_QUIZ_PROMPT,
+        TEXT_QUIZ_PROMPT,
+        PPTX_QUIZ_PROMPT,
     )
     from script_generation.models import (  # type: ignore
         TranscriptResponse,
@@ -204,7 +204,7 @@ def extract_transcripts(file, file_type):
             ),
         ]
         prompt = [
-            types.Part.from_text(text=YOUTUBE_PROMPT)
+            types.Part.from_text(text=AUDIO_PROMPT)
         ]
     elif file_type == "pptx":
         pptx_data = _ensure_text(file)
@@ -356,7 +356,7 @@ def extract_quiz_transcripts(file, file_type):
             ),
         ]
         prompt = [
-            types.Part.from_text(text=YOUTUBE_QUIZ_PROMPT)
+            types.Part.from_text(text=AUDIO_QUIZ_PROMPT)
         ]
     elif file_type == "pptx":
         pptx_data = _ensure_text(file)
@@ -445,8 +445,8 @@ def extract_quiz_transcripts(file, file_type):
     return quiz_modules
 
 if __name__ == "__main__":
-    file = "https://youtu.be/2vbSBrvetWc?si=ZEUYlGBNa1K3-9BW"
-    file_type = "youtube"
-    transcripts = extract_quiz_transcripts(file, file_type)
+    file = "C:\\Users\\Chris\\Downloads\\The essence of calculus.mp3"
+    file_type = "audio/mp3"
+    transcripts = extract_transcripts(file, file_type)
     for subtopic in transcripts:
         print(subtopic.model_dump())
