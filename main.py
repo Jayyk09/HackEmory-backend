@@ -7,7 +7,8 @@ from uuid import uuid4
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Query
 
-from save_to_db.save_video import get_user_videos
+from save_to_db.save_video import get_user_videos, get_collection_videos
+from save_to_db.collection_service import get_collection, get_user_collections
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from frontend_pipeline.script_generation.transcripts import extract_transcripts
@@ -295,51 +296,35 @@ def _extract_subtopic_number(video: dict) -> int:
     return 999999
 
 
-def _sort_videos_by_session_and_subtopic(videos: List[dict]) -> List[dict]:
+def _sort_videos_by_collection(videos: List[dict]) -> List[dict]:
     """
-    Sort videos so that within each session, they're ordered by subtopic number (1→n),
-    but sessions themselves remain in reverse chronological order (newest first).
+    Sort videos by collection_id (newest first), then by creation time within collection (oldest first).
+    Videos without a collection are sorted to the end.
     """
     if not videos:
         return videos
     
-    # Group videos into sessions based on timestamp proximity
-    # Videos created within 5 minutes of each other are considered part of the same session
-    sessions = []
-    current_session = []
+    # Separate videos with and without collections
+    with_collection = [v for v in videos if v.get('collection_id') is not None]
+    without_collection = [v for v in videos if v.get('collection_id') is None]
     
-    for video in videos:
-        if not current_session:
-            current_session.append(video)
-        else:
-            # Check if this video belongs to the current session
-            # If timestamps aren't available, we'll group by proximity in the list
-            # (videos from same session are returned consecutively by the DB)
-            prev_video = current_session[-1]
-            
-            # If both have subtopic numbers, check if they might be from same session
-            prev_num = _extract_subtopic_number(prev_video)
-            curr_num = _extract_subtopic_number(video)
-            
-            # If the current video has a smaller subtopic number, it's likely a new session
-            # (since DB returns newest first, descending order within sessions)
-            if curr_num < prev_num or (curr_num == 999999 and prev_num == 999999):
-                # Same session
-                current_session.append(video)
-            else:
-                # New session - save the old one and start a new one
-                sessions.append(current_session)
-                current_session = [video]
+    # Group by collection_id
+    collections = {}
+    for video in with_collection:
+        coll_id = video['collection_id']
+        if coll_id not in collections:
+            collections[coll_id] = []
+        collections[coll_id].append(video)
     
-    # Don't forget the last session
-    if current_session:
-        sessions.append(current_session)
-    
-    # Sort each session by subtopic number (ascending)
+    # Sort collections by the newest video in each collection (descending)
+    # Then sort videos within each collection by subtopic number (ascending)
     sorted_videos = []
-    for session in sessions:
-        sorted_session = sorted(session, key=_extract_subtopic_number)
-        sorted_videos.extend(sorted_session)
+    for coll_id in sorted(collections.keys(), reverse=True):
+        collection_videos = sorted(collections[coll_id], key=_extract_subtopic_number)
+        sorted_videos.extend(collection_videos)
+    
+    # Add videos without collections at the end
+    sorted_videos.extend(without_collection)
     
     return sorted_videos
 
@@ -352,10 +337,10 @@ async def list_user_videos(
     """
     Return up to 5 videos for the current user, starting at index `start`.
     Each video includes a presigned_url usable by the frontend.
-    Videos are sorted by session (newest first), and within each session by subtopic number (1→n).
+    Videos are grouped by collection (newest first), and within each collection by subtopic number (1→n).
     """
     try:
-        # Fetch more videos than requested to ensure proper session grouping
+        # Fetch more videos than requested to ensure proper collection grouping
         fetch_limit = max(20, start + 10)
         all_videos = await _run_blocking(
             get_user_videos,
@@ -364,8 +349,8 @@ async def list_user_videos(
             fetch_limit,
         )
         
-        # Sort videos by session and subtopic
-        sorted_videos = _sort_videos_by_session_and_subtopic(all_videos)
+        # Sort videos by collection
+        sorted_videos = _sort_videos_by_collection(all_videos)
         
         # Apply pagination after sorting
         paginated_videos = sorted_videos[start:start + 5]
@@ -373,12 +358,73 @@ async def list_user_videos(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    # get_user_videos already returns: id, title, description, presigned_url
     return {
         "start": start,
         "count": len(paginated_videos),
         "videos": paginated_videos,
     }
+
+
+# ============ Collection Endpoints ============
+
+@app.get("/collections")
+async def list_user_collections(
+    start: int = Query(0, ge=0, description="Offset into collections list"),
+    limit: int = Query(10, ge=1, le=50, description="Number of collections to return"),
+    user_id: int = Depends(get_current_user_id),
+):
+    """
+    List all collections for the current user.
+    Returns collections ordered by newest first.
+    """
+    try:
+        collections = await _run_blocking(
+            get_user_collections,
+            user_id,
+            start,
+            limit,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+    return {
+        "start": start,
+        "count": len(collections),
+        "collections": collections,
+    }
+
+
+@app.get("/collections/{collection_id}")
+async def get_collection_details(
+    collection_id: int,
+    user_id: int = Depends(get_current_user_id),
+):
+    """
+    Get a specific collection with all its videos.
+    Videos are ordered by subtopic number (1→n).
+    """
+    try:
+        # Get collection metadata
+        collection = await _run_blocking(get_collection, collection_id)
+        if not collection:
+            raise HTTPException(status_code=404, detail="Collection not found")
+        
+        # Verify ownership
+        if collection["user_id"] != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized to access this collection")
+        
+        # Get all videos in the collection
+        videos = await _run_blocking(get_collection_videos, collection_id)
+        
+        return {
+            "collection": collection,
+            "video_count": len(videos),
+            "videos": videos,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============ Account CRUD Endpoints ============

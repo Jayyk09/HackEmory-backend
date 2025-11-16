@@ -16,6 +16,7 @@ import random
 from pathlib import Path
 from typing import Any, Dict, List
 from save_to_db.save_video import add_video
+from save_to_db.collection_service import create_collection, generate_collection_title
 
 from backend_pipeline.audio_generation.elevenLabs import (
     generate_audio_from_transcript,
@@ -84,8 +85,18 @@ def generate_videos_from_subtopic_list(
 
     # Determine if background_video is a directory or a single file
     is_directory = background_video_path.is_dir()
-    
+
+    # Step 1: Create collection first based on subtopic titles
+    subtopic_titles = [subtopic["subtopic_title"] for subtopic in subtopics]
+    collection_title = generate_collection_title(subtopic_titles)
+    collection_id = create_collection(user_id, collection_title)
+
+    print(f"\n✨ Created collection: '{collection_title}' (ID: {collection_id})")
+
+    # Step 2: Generate all videos and store them temporarily
+    video_files = []
     results = []
+    
     for index, subtopic in enumerate(subtopics, start=1):
         # Select background video for this subtopic
         if is_directory:
@@ -122,28 +133,41 @@ def generate_videos_from_subtopic_list(
             caption_timings=audio_result["timings"],
             output_file=str(video_output),
         )
+        
+        # Store video file info for batch upload
+        video_files.append({
+            "path": video_output,
+            "subtopic_title": subtopic["subtopic_title"],
+            "index": index,
+            "audio_file": audio_result["audio_file"],
+        })
 
-        # Upload video to S3 and save to database
-        # print("☁️  Uploading video to S3…")
-        with open(video_output, "rb") as video_file:
+    # Step 3: Upload all videos to S3 and save to database with collection_id
+    print(f"\n☁️  Uploading {len(video_files)} videos to S3 and database...")
+    
+    for video_info in video_files:
+        with open(video_info["path"], "rb") as video_file:
             video_id = add_video(
                 user_id=user_id,
                 file_obj=video_file,
-                original_filename=video_output.name,
-                title=subtopic["subtopic_title"],
-                description=f"Subtopic {index}/{len(subtopics)}",
+                original_filename=video_info["path"].name,
+                title=video_info["subtopic_title"],
+                description=f"Subtopic {video_info['index']}/{len(subtopics)}",
+                collection_id=collection_id,
             )
 
         results.append(
             {
-                "subtopic_title": subtopic["subtopic_title"],
-                "video_path": video_path,
-                "audio_file": audio_result["audio_file"],
+                "subtopic_title": video_info["subtopic_title"],
+                "video_path": str(video_info["path"]),
+                "audio_file": video_info["audio_file"],
                 "video_id": video_id,
+                "collection_id": collection_id,
             }
         )
-        print(f"✅ Created and uploaded video_id {video_id}")
+        print(f"✅ Uploaded video_id {video_id} for '{video_info['subtopic_title']}'")
 
+    print(f"\n🎉 All {len(results)} videos uploaded to collection '{collection_title}'")
     return results
 
 
@@ -212,9 +236,8 @@ def main():
 
     print("\n=== Summary ===")
     for item in results:
-        print(f"- {item['subtopic_title']}: {item['video_path']}")
+        print(f"- {item['subtopic_title']}: {item['video_path']} (Collection: {item['collection_id']})")
 
 
 if __name__ == "__main__":
     main()
-
