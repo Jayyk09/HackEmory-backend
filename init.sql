@@ -1,4 +1,3 @@
--- Create tables
 CREATE TABLE IF NOT EXISTS users (
     id          SERIAL PRIMARY KEY,
     email       TEXT NOT NULL UNIQUE,
@@ -15,7 +14,6 @@ CREATE TABLE IF NOT EXISTS videos (
     created_at        TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Seed dev users (passwords NOT hashed, dev only)
 INSERT INTO users (email, password)
 VALUES
     ('alice@example.com', 'password1'),

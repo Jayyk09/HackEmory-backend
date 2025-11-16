@@ -1,42 +1,49 @@
+from __future__ import annotations
+
 from pathlib import Path
 from uuid import uuid4
 import mimetypes
-from typing import Dict, Any, List
+from typing import BinaryIO, Dict, Any, List
 
 import boto3
 
-from db import get_db_conn  # <-- shared DB connection
+from db import get_db_conn  # shared DB connection
 
 BUCKET_NAME = "emory-hacks-video-bucket"
 
 # Reuse one S3 client for the whole program
-s3 = boto3.client("s3")  # uses your aws configure creds
+s3 = boto3.client("s3")  # uses your AWS configured creds
 
 
-def upload_video_to_s3(local_path: str, user_id: int) -> str:
+def upload_video_to_s3(
+    file_obj: BinaryIO,
+    original_filename: str,
+    user_id: int,
+) -> str:
     """
-    Upload a local file to S3 under {user_id}/{uuid}{ext}
+    Upload a file-like object to S3 under {user_id}/{uuid}{ext}
     and return the S3 key to store in your DB.
     """
-    path = Path(local_path).expanduser()
-
-    # Get extension (.mp4, .mov, .pdf, etc.). Default to .mp4 if none.
-    ext = path.suffix or ".mp4"
+    # Get extension from filename (.mp4, .mov, etc.). Default to .mp4 if none.
+    ext = Path(original_filename).suffix or ".mp4"
 
     # Guess MIME type, fallback to binary
-    content_type, _ = mimetypes.guess_type(str(path))
+    content_type, _ = mimetypes.guess_type(original_filename)
     if content_type is None:
         content_type = "application/octet-stream"
 
     # Generate a unique video id
     video_id = uuid4().hex
 
-    # This is the S3 key (like a path inside the bucket)
+    # This is the S3 key (path inside the bucket)
     key = f"{user_id}/{video_id}{ext}"
 
-    # Upload the file
-    s3.upload_file(
-        Filename=str(path),
+    # Make sure we're at the start of the file
+    file_obj.seek(0)
+
+    # Upload the file object
+    s3.upload_fileobj(
+        Fileobj=file_obj,
         Bucket=BUCKET_NAME,
         Key=key,
         ExtraArgs={"ContentType": content_type},
@@ -47,17 +54,18 @@ def upload_video_to_s3(local_path: str, user_id: int) -> str:
 
 def add_video(
     user_id: int,
-    local_path: str,
+    file_obj: BinaryIO,
+    original_filename: str,
     title: str | None = None,
     description: str | None = None,
 ) -> int:
     """
     High-level function:
-    - uploads file to S3
+    - uploads file object to S3
     - inserts row into videos table
     Returns the new video id.
     """
-    s3_key = upload_video_to_s3(local_path, user_id)
+    s3_key = upload_video_to_s3(file_obj, original_filename, user_id)
 
     conn = get_db_conn()
     conn.autocommit = True
@@ -112,7 +120,7 @@ def get_video(user_id: int, video_id: int) -> Dict[str, Any]:
     presigned_url = s3.generate_presigned_url(
         "get_object",
         Params={"Bucket": BUCKET_NAME, "Key": s3_key},
-        ExpiresIn=3600,  # valid for 1 hour
+        ExpiresIn=3600,  # 1 hour
     )
 
     return {
