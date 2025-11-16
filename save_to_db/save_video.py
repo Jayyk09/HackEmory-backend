@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import uuid4
 import mimetypes
-from typing import BinaryIO, Dict, Any, List
+from typing import BinaryIO, Dict, Any, List, Optional
 
 import boto3
 
@@ -58,12 +58,21 @@ def add_video(
     original_filename: str,
     title: str | None = None,
     description: str | None = None,
+    collection_id: Optional[int] = None,
 ) -> int:
     """
     High-level function:
     - uploads file object to S3
     - inserts row into videos table
     Returns the new video id.
+    
+    Args:
+        user_id: User who owns the video
+        file_obj: File-like object containing video data
+        original_filename: Original filename (for extension)
+        title: Video title
+        description: Video description
+        collection_id: Optional collection ID to group this video with others
     """
     s3_key = upload_video_to_s3(file_obj, original_filename, user_id)
 
@@ -73,11 +82,11 @@ def add_video(
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO videos (user_id, s3_key, video_title, video_description)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO videos (user_id, s3_key, video_title, video_description, collection_id)
+                VALUES (%s, %s, %s, %s, %s)
                 RETURNING id;
                 """,
-                (user_id, s3_key, title, description),
+                (user_id, s3_key, title, description, collection_id),
             )
             row = cur.fetchone()
             if row is None:
@@ -102,7 +111,7 @@ def get_video(user_id: int, video_id: int) -> Dict[str, Any]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, user_id, s3_key, video_title, video_description, created_at
+                SELECT id, user_id, s3_key, video_title, video_description, collection_id, created_at
                 FROM videos
                 WHERE id = %s AND user_id = %s;
                 """,
@@ -115,7 +124,7 @@ def get_video(user_id: int, video_id: int) -> Dict[str, Any]:
     if row is None:
         raise ValueError("Video not found for given user_id and video_id")
 
-    vid_id, user_id_db, s3_key, title, desc, created_at = row
+    vid_id, user_id_db, s3_key, title, desc, coll_id, created_at = row
 
     presigned_url = s3.generate_presigned_url(
         "get_object",
@@ -129,6 +138,7 @@ def get_video(user_id: int, video_id: int) -> Dict[str, Any]:
         "s3_key": s3_key,
         "video_title": title,
         "video_description": desc,
+        "collection_id": coll_id,
         "created_at": created_at,
         "presigned_url": presigned_url,
     }
@@ -150,7 +160,7 @@ def get_user_videos(
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, s3_key, video_title, video_description, created_at
+                SELECT id, s3_key, video_title, video_description, collection_id, created_at
                 FROM videos
                 WHERE user_id = %s
                 ORDER BY created_at DESC, id DESC
@@ -164,7 +174,7 @@ def get_user_videos(
         conn.close()
 
     videos: List[Dict[str, Any]] = []
-    for vid_id, s3_key, title, desc, created_at in rows:
+    for vid_id, s3_key, title, desc, coll_id, created_at in rows:
         presigned_url = s3.generate_presigned_url(
             "get_object",
             Params={"Bucket": BUCKET_NAME, "Key": s3_key},
@@ -175,6 +185,59 @@ def get_user_videos(
                 "id": vid_id,
                 "title": title,
                 "description": desc,
+                "collection_id": coll_id,
+                "presigned_url": presigned_url,
+            }
+        )
+
+    return videos
+
+
+def get_collection_videos(
+    collection_id: int,
+    offset: int = 0,
+    limit: int = 50,
+) -> List[Dict[str, Any]]:
+    """
+    Get all videos in a collection.
+    
+    Returns:
+        List of video dicts with presigned URLs, ordered by created_at ASC (oldest first)
+        to preserve the subtopic order.
+    """
+    conn = get_db_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, user_id, s3_key, video_title, video_description, collection_id, created_at
+                FROM videos
+                WHERE collection_id = %s
+                ORDER BY created_at ASC, id ASC
+                OFFSET %s
+                LIMIT %s;
+                """,
+                (collection_id, offset, limit),
+            )
+            rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    videos: List[Dict[str, Any]] = []
+    for vid_id, user_id, s3_key, title, desc, coll_id, created_at in rows:
+        presigned_url = s3.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": BUCKET_NAME, "Key": s3_key},
+            ExpiresIn=3600,
+        )
+        videos.append(
+            {
+                "id": vid_id,
+                "user_id": user_id,
+                "title": title,
+                "description": desc,
+                "collection_id": coll_id,
+                "created_at": created_at,
                 "presigned_url": presigned_url,
             }
         )
