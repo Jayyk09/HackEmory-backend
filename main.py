@@ -254,7 +254,6 @@ async def generate_video(
             transcript_type = "youtube"
 
         subtopics = await _run_blocking(
-        subtopics = await _run_blocking(
             extract_transcripts,
             transcript_source,
             transcript_type,
@@ -272,7 +271,6 @@ async def generate_video(
             user_id,
             [subtopic.model_dump() for subtopic in subtopics],
             prefix="session",
-        )
         )
 
         # Generate quiz modules (wrap in _run_blocking since it's synchronous)
