@@ -83,31 +83,6 @@ async def _run_blocking(func, *args, **kwargs):
     return await asyncio.to_thread(func, *args, **kwargs)
 
 
-def _get_random_background_video() -> Path:
-    """
-    Randomly select a background video from the assets/videos directory.
-    Returns the path to the selected video.
-    """
-    if not BACKGROUND_VIDEOS_DIR.exists():
-        raise HTTPException(
-            status_code=500,
-            detail=f"Background videos directory not found at {BACKGROUND_VIDEOS_DIR}",
-        )
-    
-    # Get all .mp4 files from the videos directory
-    video_files = list(BACKGROUND_VIDEOS_DIR.glob("*.mp4"))
-    
-    if not video_files:
-        raise HTTPException(
-            status_code=500,
-            detail=f"No background videos found in {BACKGROUND_VIDEOS_DIR}",
-        )
-    
-    # Randomly select one video
-    selected_video = random.choice(video_files)
-    print(f"🎥 Selected background video: {selected_video.name}")
-    
-    return selected_video
 
 
 def _validate_background_video():
