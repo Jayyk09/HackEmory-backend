@@ -56,6 +56,8 @@ Speakers must be only "PETER" or "STEWIE".
 
 Each object in the "dialogue" array must include an "emotion" field. The value must be one of: "neutral", "angry", "excited", or "confused".
 
+IMPORTANT: Default to "neutral". Only use "angry", "excited", or "confused" if the emotion strongly and clearly fits the specific line and character's persona.
+
 The "subtopic_title" should be a brief, descriptive string.
 
 The tone for EACH dialogue should resemble Peter teaching and Stewie asking curious questions.
@@ -127,6 +129,8 @@ Each "caption" must be one sentence only, 20 words or fewer.
 Speakers must be only "PETER" or "STEWIE".
 
 Each object in the "dialogue" array must include an "emotion" field. The value must be one of: "neutral", "angry", "excited", or "confused".
+
+IMPORTANT: Default to "neutral". Only use "angry", "excited", or "confused" if the emotion strongly and clearly fits the specific line and character's persona.
 
 The "subtopic_title" should be a brief, descriptive string.
 
@@ -200,6 +204,8 @@ Speakers must be only "PETER" or "STEWIE".
 
 Each object in the "dialogue" array must include an "emotion" field. The value must be one of: "neutral", "angry", "excited", or "confused".
 
+IMPORTANT: Default to "neutral". Only use "angry", "excited", or "confused" if the emotion strongly and clearly fits the specific line and character's persona.
+
 The "subtopic_title" should be a brief, descriptive string.
 
 The tone for EACH dialogue should resemble Peter teaching and Stewie asking curious questions.
@@ -237,7 +243,14 @@ THE JSON STRUCTURE:
         {
           "question_number": 1,
           "type": "multiple_choice",
+          "type": "multiple_choice",
           "question_text": "The actual question text.",
+          "options": [
+            "Option A",
+            "Option B",
+            "Option C",
+            "Option D"
+          ],
           "options": [
             "Option A",
             "Option B",
@@ -289,6 +302,8 @@ The "Pause" Mechanic: In the "ask" script, Peter MUST explicitly encourage the v
 Script Length: Keep the "ask" and "reveal" scripts concise (under 25 words each) so they fit a short-form video format (TikTok/Reels/Shorts).
 
 Emotion Fields: The "script" object must include "ask_emotion" and "reveal_emotion". The value for each must be one of: "neutral", "angry", "excited", or "confused".
+
+IMPORTANT: Default to "neutral". Only use "angry", "excited", or "confused" if the emotion strongly and clearly fits the specific script line and Peter's persona.
 
 Output: Respond ONLY with the JSON object. No markdown formatting (like ```json), no conversational filler. Just the raw JSON string.
 
@@ -315,7 +330,14 @@ THE JSON STRUCTURE:
         {
           "question_number": 1,
           "type": "multiple_choice",
+          "type": "multiple_choice",
           "question_text": "The actual question text.",
+          "options": [
+            "Option A",
+            "Option B",
+            "Option C",
+            "Option D"
+          ],
           "options": [
             "Option A",
             "Option B",
@@ -367,6 +389,8 @@ The "Pause" Mechanic: In the "ask" script, Peter MUST explicitly encourage the v
 Script Length: Keep the "ask" and "reveal" scripts concise (under 25 words each) so they fit a short-form video format (TikTok/Reels/Shorts).
 
 Emotion Fields: The "script" object must include "ask_emotion" and "reveal_emotion". The value for each must be one of: "neutral", "angry", "excited", or "confused".
+
+IMPORTANT: Default to "neutral". Only use "angry", "excited", or "confused" if the emotion strongly and clearly fits the specific script line and Peter's persona.
 
 Output: Respond ONLY with the JSON object. No markdown formatting (like ```json), no conversational filler. Just the raw JSON string.
 
@@ -393,7 +417,14 @@ THE JSON STRUCTURE:
         {
           "question_number": 1,
           "type": "multiple_choice",
+          "type": "multiple_choice",
           "question_text": "The actual question text.",
+          "options": [
+            "Option A",
+            "Option B",
+            "Option C",
+            "Option D"
+          ],
           "options": [
             "Option A",
             "Option B",
@@ -445,6 +476,8 @@ The "Pause" Mechanic: In the "ask" script, Peter MUST explicitly encourage the v
 Script Length: Keep the "ask" and "reveal" scripts concise (under 25 words each) so they fit a short-form video format (TikTok/Reels/Shorts).
 
 Emotion Fields: The "script" object must include "ask_emotion" and "reveal_emotion". The value for each must be one of: "neutral", "angry", "excited", or "confused".
+
+IMPORTANT: Default to "neutral". Only use "angry", "excited", or "confused" if the emotion strongly and clearly fits the specific script line and Peter's persona.
 
 Output: Respond ONLY with the JSON object. No markdown formatting (like ```json), no conversational filler. Just the raw JSON string.
 

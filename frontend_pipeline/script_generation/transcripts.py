@@ -109,11 +109,11 @@ def extract_audio_from_youtube(url):
     print(f"Download started with UID: {uid}")
     
     # Step 2: Poll for status until READY or DONE
-    max_retries = 60  # 5 minutes max (5 second intervals)
+    max_retries = 3  # 3 minutes max (60 second intervals)
     retry_count = 0
     
     while retry_count < max_retries:
-        time.sleep(5)  # Wait 5 seconds between checks
+        time.sleep(60)  # Wait 60 seconds between checks
         
         conn = http.client.HTTPSConnection("yt-downloader9.p.rapidapi.com")
         conn.request("GET", f"/status/{uid}", headers=headers)
@@ -142,7 +142,7 @@ def extract_audio_from_youtube(url):
         
         retry_count += 1
     
-    raise TimeoutError(f"Download timed out after {max_retries * 5} seconds")
+    raise TimeoutError(f"Download timed out after {max_retries * 60} seconds")
 
 def extract_transcripts(file, file_type):
     dotenv.load_dotenv()
