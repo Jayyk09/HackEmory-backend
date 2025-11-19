@@ -172,9 +172,9 @@ def create_video_with_audio_and_captions(
     
     current_stream = "[bg]"
     input_index = 2  # 0=background, 1=audio, 2+=character images
-    character_height = 480
+    character_height = 800
     peter_margin = 10
-    stewie_margin = 40
+    stewie_margin = 0  # Moved closer to the left edge
     
     # Scale all character images first
     character_scaled_streams = {}

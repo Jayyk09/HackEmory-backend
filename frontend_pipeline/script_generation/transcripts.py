@@ -109,11 +109,14 @@ def extract_audio_from_youtube(url):
     print(f"Download started with UID: {uid}")
     
     # Step 2: Poll for status until READY or DONE
-    max_retries = 3  # 3 minutes max (60 second intervals)
+    max_retries = 120  # 10 minutes max (5 second intervals)
     retry_count = 0
+    start_time = time.time()
     
     while retry_count < max_retries:
-        time.sleep(60)  # Wait 60 seconds between checks
+        time.sleep(5)  # Wait 5 seconds between checks
+        retry_count += 1
+        elapsed = int(time.time() - start_time)
         
         conn = http.client.HTTPSConnection("yt-downloader9.p.rapidapi.com")
         conn.request("GET", f"/status/{uid}", headers=headers)
@@ -122,7 +125,7 @@ def extract_audio_from_youtube(url):
         status_response = json.loads(data.decode("utf-8"))
         
         status = status_response.get("status")
-        print(f"Status: {status}")
+        print(f"[{elapsed}s] Status: {status} (attempt {retry_count}/{max_retries})")
         
         if status == "READY" or status == "DONE":
             target_file = status_response.get("targetFile")
@@ -139,10 +142,10 @@ def extract_audio_from_youtube(url):
         
         elif status == "YOUTUBE-ERROR" or status == "CANCELED":
             raise ValueError(f"Download failed with status: {status}")
-        
-        retry_count += 1
     
-    raise TimeoutError(f"Download timed out after {max_retries * 60} seconds")
+    # If we get here, we've exceeded max retries
+    total_time = max_retries * 5
+    raise TimeoutError(f"Download timed out after {total_time} seconds ({total_time // 60} minutes)")
 
 def extract_transcripts(file, file_type):
     dotenv.load_dotenv()

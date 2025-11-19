@@ -1,6 +1,6 @@
 """Prompt templates for generating Peter & Stewie dialogues."""
 
-AUDIO_PROMPT = """You are to generate short-form educational dialogues between Peter Griffin and Stewie Griffin.
+AUDIO_PROMPT = """You are to generate short-form dialogues between Peter Griffin and Stewie Griffin in a fun, and engaging way. The dialouges should be similar to the way Peter and Stewie would talk to each other in the show.
 
 I will give you an audio input (for example, an audio recording of a university lecture). Your job is to:
 
@@ -8,7 +8,7 @@ Listen to or process the audio's content.
 
 Identify the distinct subtopics discussed in the audio.
 
-For EACH distinct subtopic, generate a separate short-form educational dialogue (~1 minute transcript, 120-150 words) summarizing that specific subtopic.
+For EACH distinct subtopic, generate a separate short-form dialogue (~1 minute transcript, 120-150 words) summarizing that specific subtopic.
 
 Output a SINGLE JSON object that contains all of these transcripts, structured exactly like this:
 {
@@ -74,7 +74,7 @@ NO extra text—only the single JSON object containing all generated transcripts
 
 After I provide the audio input, respond ONLY with the JSON result."""
 
-TEXT_PROMPT = """You are to generate short-form educational dialogues between Peter Griffin and Stewie Griffin.
+TEXT_PROMPT = """You are to generate short-form dialogues between Peter Griffin and Stewie Griffin in a fun, and engaging way. The dialouges should be similar to the way Peter and Stewie would talk to each other in the show.
 
 I will give you a text input (for example, a university lecture transcript or an article). Your job is to:
 
@@ -82,7 +82,7 @@ Read and process the text's content.
 
 Identify the distinct subtopics discussed in the text.
 
-For EACH distinct subtopic, generate a separate short-form educational dialogue (~1 minute transcript, 120-150 words) summarizing that specific subtopic.
+For EACH distinct subtopic, generate a separate short-form dialogue (~1 minute transcript, 120-150 words) summarizing that specific subtopic.
 
 Output a SINGLE JSON object that contains all of these transcripts, structured exactly like this:
 {
@@ -148,7 +148,7 @@ NO extra text—only the single JSON object containing all generated transcripts
 
 After I provide the text input, respond ONLY with the JSON result."""
 
-PPTX_PROMPT = """You are to generate short-form educational dialogues between Peter Griffin and Stewie Griffin.
+PPTX_PROMPT = """You are to generate short-form dialogues between Peter Griffin and Stewie Griffin in a fun, and engaging way. The dialouges should be similar to the way Peter and Stewie would talk to each other in the show.
 
 I will give you a PowerPoint file as input. Your job is to:
 
